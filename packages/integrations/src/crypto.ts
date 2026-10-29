@@ -5,8 +5,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
  *
  * Format: `v1.<keyId>.<iv>.<authTag>.<ciphertext>` (base64url parts). `keyId` identifies which key
  * encrypted the value, so a retired key can stay in the keyring for decrypting until rows are
- * re-encrypted. `context` (e.g. `customerId:google`) is bound as authenticated data, so a
- * ciphertext copied to another customer or provider fails to decrypt.
+ * re-encrypted. `context` (e.g. `clientId:google`) is bound as authenticated data, so a
+ * ciphertext copied to another client or provider fails to decrypt.
  */
 
 const VERSION = "v1";

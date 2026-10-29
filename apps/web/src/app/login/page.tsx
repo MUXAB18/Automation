@@ -7,13 +7,13 @@ export const metadata = { title: "Sign in" };
 const POINTS = [
   {
     icon: Layers,
-    title: "Every customer in one place",
+    title: "Every client in one place",
     text: "Switch between businesses without switching tools.",
   },
   {
     icon: BarChart3,
     title: "Search and traffic, joined up",
-    text: "Rankings and analytics side by side, per customer.",
+    text: "Rankings and analytics side by side, per client.",
   },
   {
     icon: ShieldCheck,
@@ -45,7 +45,7 @@ export default function LoginPage() {
 
         <div className="relative max-w-md">
           <h2 className="text-4xl font-semibold leading-tight tracking-tight">
-            Grow every customer&rsquo;s search presence, from one dashboard.
+            Grow every client&rsquo;s search presence, from one dashboard.
           </h2>
           <ul className="mt-10 space-y-6">
             {POINTS.map(({ icon: Icon, title, text }) => (
@@ -74,7 +74,7 @@ export default function LoginPage() {
             <span className="font-semibold tracking-tight">SEO &amp; Social Automation</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Sign in to manage your customers.</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">Sign in to manage your clients.</p>
           <div className="mt-8">
             <LoginForm />
           </div>

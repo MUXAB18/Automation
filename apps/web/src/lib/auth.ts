@@ -9,7 +9,7 @@ const env = getWebEnv();
 export const auth = betterAuth({
   baseURL: env.APP_URL,
   secret: env.BETTER_AUTH_SECRET,
-  // Auth tables are not customer-owned, so the raw client is correct here.
+  // Auth tables are not client-owned, so the raw client is correct here.
   database: prismaAdapter(getUnscopedPrisma(), { provider: "postgresql" }),
   emailAndPassword: {
     enabled: true,

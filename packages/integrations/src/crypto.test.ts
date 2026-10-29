@@ -18,7 +18,7 @@ describe("createTokenCipher", () => {
     expect(cipher.encrypt("x", "c")).not.toBe(cipher.encrypt("x", "c"));
   });
 
-  it("rejects a different context (ciphertext moved to another customer)", () => {
+  it("rejects a different context (ciphertext moved to another client)", () => {
     const cipher = createTokenCipher(keyA);
     const payload = cipher.encrypt("secret", "c1:google");
     expect(() => cipher.decrypt(payload, "c2:google")).toThrow(CryptoError);

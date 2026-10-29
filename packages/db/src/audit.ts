@@ -4,7 +4,7 @@ type Json = Prisma.InputJsonValue;
 
 export type AuditEntry = {
   actorUserId: string | null;
-  customerId: string | null;
+  clientId: string | null;
   action: string;
   entityType: string;
   entityId: string;
@@ -21,7 +21,7 @@ export async function recordAudit(db: AuditWriter, entry: AuditEntry): Promise<v
   await db.auditLog.create({
     data: {
       actorUserId: entry.actorUserId,
-      customerId: entry.customerId,
+      clientId: entry.clientId,
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId,

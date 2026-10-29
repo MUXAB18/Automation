@@ -39,17 +39,17 @@ async function main() {
       await prisma.account.update({ where: { id: credential.id }, data: { accountId: admin.id } });
     }
 
-    const customer = await prisma.customer.upsert({
+    const client = await prisma.client.upsert({
       where: { slug: "sarj-worldwide" },
       update: {},
       create: { name: "SARJ Worldwide", slug: "sarj-worldwide", reportIntervalDays: 15 },
     });
     await prisma.website.upsert({
-      where: { customerId_domain: { customerId: customer.id, domain: "sarjworldwide.ca" } },
+      where: { clientId_domain: { clientId: client.id, domain: "sarjworldwide.ca" } },
       update: {},
-      create: { customerId: customer.id, domain: "sarjworldwide.ca", isPrimary: true },
+      create: { clientId: client.id, domain: "sarjworldwide.ca", isPrimary: true },
     });
-    console.log(`Customer ready: ${customer.name} (sarjworldwide.ca)`);
+    console.log(`Client ready: ${client.name} (sarjworldwide.ca)`);
   } finally {
     await prisma.$disconnect();
   }

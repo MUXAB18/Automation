@@ -27,7 +27,7 @@ export class ValidationError extends Error {
   }
 }
 
-/** A query tried to read or write outside its customer scope. */
+/** A query tried to read or write outside its client scope. */
 export class ScopeViolationError extends Error {
   constructor(message: string) {
     super(message);

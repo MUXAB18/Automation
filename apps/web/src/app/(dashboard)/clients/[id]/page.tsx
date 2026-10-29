@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { NotFoundError, can, getCustomer, listAuditLog } from "@automation/db";
+import { NotFoundError, can, getClient, listAuditLog } from "@automation/db";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,38 +8,38 @@ import {
   addWebsiteAction,
   removeWebsiteAction,
   setStatusAction,
-  updateCustomerAction,
+  updateClientAction,
 } from "../actions";
-import { CustomerForm } from "../customer-form";
+import { ClientForm } from "../client-form";
 import { StatusControls } from "../status-controls";
 import { WebsitesPanel } from "../websites-panel";
 
-export const metadata = { title: "Customer" };
+export const metadata = { title: "Client" };
 
-export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
   const actor = await requireActor();
   const { id } = await params;
 
   let data;
   try {
-    data = await getCustomer(actor, id);
+    data = await getClient(actor, id);
   } catch (error) {
     if (error instanceof NotFoundError) notFound();
     throw error;
   }
-  const { customer, access } = data;
+  const { client, access } = data;
   const history = await listAuditLog(actor, id);
 
   return (
     <>
       <PageHeader
-        title={customer.name}
-        description={customer.slug}
+        title={client.name}
+        description={client.slug}
         actions={
           <div className="flex items-center gap-3">
-            <StatusBadge status={customer.status} />
-            {can(access, "customer.status") ? (
-              <StatusControls status={customer.status} action={setStatusAction.bind(null, id)} />
+            <StatusBadge status={client.status} />
+            {can(access, "client.status") ? (
+              <StatusControls status={client.status} action={setStatusAction.bind(null, id)} />
             ) : null}
           </div>
         }
@@ -51,11 +51,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <CardTitle>Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <CustomerForm
+            <ClientForm
               mode="edit"
-              action={updateCustomerAction.bind(null, id)}
-              readOnly={!can(access, "customer.update")}
-              values={customer}
+              action={updateClientAction.bind(null, id)}
+              readOnly={!can(access, "client.update")}
+              values={client}
             />
           </CardContent>
         </Card>
@@ -67,7 +67,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             </CardHeader>
             <CardContent>
               <WebsitesPanel
-                websites={customer.websites}
+                websites={client.websites}
                 canManage={can(access, "website.manage")}
                 addAction={addWebsiteAction.bind(null, id)}
                 removeAction={removeWebsiteAction.bind(null, id)}

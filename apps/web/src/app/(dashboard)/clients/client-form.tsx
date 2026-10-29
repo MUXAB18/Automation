@@ -39,7 +39,7 @@ function Field({
   );
 }
 
-export function CustomerForm({
+export function ClientForm({
   action,
   mode,
   values = {},
@@ -114,11 +114,11 @@ export function CustomerForm({
         </p>
       ) : null}
       {readOnly ? (
-        <p className="text-sm text-muted-foreground">You have read-only access to this customer.</p>
+        <p className="text-sm text-muted-foreground">You have read-only access to this client.</p>
       ) : (
         <div>
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : mode === "create" ? "Create customer" : "Save changes"}
+            {pending ? "Saving…" : mode === "create" ? "Create client" : "Save changes"}
           </Button>
         </div>
       )}

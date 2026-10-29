@@ -1,4 +1,4 @@
-// Multi-tenant schema. Tables owned by a customer carry customer_id (indexed).
+// Multi-tenant schema. Tables owned by a client carry client_id (indexed).
 // Access them through the scoped helpers in src/scope.ts, never the raw client.
 
 generator client {
@@ -10,7 +10,7 @@ datasource db {
   provider = "postgresql"
 }
 
-enum CustomerStatus {
+enum ClientStatus {
   active
   paused
   archived
@@ -51,7 +51,7 @@ model User {
   email         String   @unique
   emailVerified Boolean  @default(false)
   image         String?
-  // Platform admin: sees and manages every customer.
+  // Platform admin: sees and manages every client.
   isAdmin       Boolean  @default(false) @map("is_admin")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -116,14 +116,14 @@ model Verification {
 
 // ---- Tenants -----------------------------------------------------------------
 
-model Customer {
+model Client {
   id                 String         @id @default(uuid())
   name               String
   slug               String         @unique
-  status             CustomerStatus @default(active)
+  status             ClientStatus @default(active)
   reportEmail        String?        @map("report_email")
   reportIntervalDays Int            @default(15) @map("report_interval_days")
-  // Per-customer behavior lives in data: brand voice, schedule, etc.
+  // Per-client behavior lives in data: brand voice, schedule, etc.
   settings           Json           @default("{}")
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
@@ -135,46 +135,46 @@ model Customer {
   integrations IntegrationConnection[]
 
   @@index([status])
-  @@map("customers")
+  @@map("clients")
 }
 
 model Membership {
   id         String         @id @default(uuid())
   userId     String         @map("user_id")
-  customerId String         @map("customer_id")
+  clientId String         @map("client_id")
   role       MembershipRole
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, customerId])
-  @@index([customerId])
+  @@unique([userId, clientId])
+  @@index([clientId])
   @@map("memberships")
 }
 
 model Website {
   id         String        @id @default(uuid())
-  customerId String        @map("customer_id")
+  clientId String        @map("client_id")
   domain     String
   isPrimary  Boolean       @default(false) @map("is_primary")
   status     WebsiteStatus @default(active)
   createdAt  DateTime      @default(now()) @map("created_at")
   updatedAt  DateTime      @updatedAt @map("updated_at")
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@unique([customerId, domain])
-  @@index([customerId])
+  @@unique([clientId, domain])
+  @@index([clientId])
   @@map("websites")
 }
 
 model JobRun {
   id         String       @id @default(uuid())
   jobName    String       @map("job_name")
-  // Null only for system-level jobs that are not customer-specific.
-  customerId String?      @map("customer_id")
+  // Null only for system-level jobs that are not client-specific.
+  clientId String?      @map("client_id")
   status     JobRunStatus @default(running)
   startedAt  DateTime     @default(now()) @map("started_at")
   finishedAt DateTime?    @map("finished_at")
@@ -182,9 +182,9 @@ model JobRun {
   createdAt  DateTime     @default(now()) @map("created_at")
   updatedAt  DateTime     @updatedAt @map("updated_at")
 
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([customerId, startedAt(sort: Desc)])
+  @@index([clientId, startedAt(sort: Desc)])
   @@index([jobName, startedAt(sort: Desc)])
   @@map("job_runs")
 }
@@ -193,7 +193,7 @@ model JobRun {
 model AuditLog {
   id          String   @id @default(uuid())
   actorUserId String?  @map("actor_user_id")
-  customerId  String?  @map("customer_id")
+  clientId  String?  @map("client_id")
   action      String
   entityType  String   @map("entity_type")
   entityId    String   @map("entity_id")
@@ -202,18 +202,18 @@ model AuditLog {
   createdAt   DateTime @default(now()) @map("created_at")
 
   actor    User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([customerId, createdAt(sort: Desc)])
+  @@index([clientId, createdAt(sort: Desc)])
   @@index([actorUserId])
   @@map("audit_log")
 }
 
-// One connection per customer per provider. The refresh token is stored encrypted
+// One connection per client per provider. The refresh token is stored encrypted
 // (AES-256-GCM, see @automation/integrations) and is never returned to the browser.
 model IntegrationConnection {
   id                    String              @id @default(uuid())
-  customerId            String              @map("customer_id")
+  clientId            String              @map("client_id")
   provider              IntegrationProvider
   status                IntegrationStatus   @default(active)
   accountEmail          String?             @map("account_email")
@@ -226,9 +226,9 @@ model IntegrationConnection {
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   connectedBy User?    @relation(fields: [connectedById], references: [id], onDelete: SetNull)
 
-  @@unique([customerId, provider])
+  @@unique([clientId, provider])
   @@map("integration_connections")
 }

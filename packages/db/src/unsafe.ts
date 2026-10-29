@@ -1,9 +1,9 @@
 /**
  * UNSAFE: the raw, unscoped Prisma client.
  *
- * Import this only from code that is not customer-scoped by nature: the auth
+ * Import this only from code that is not client-scoped by nature: the auth
  * adapter, the seed script and this package's own access layer. Everything else
- * must use forCustomer / forCustomers / forAdmin / forSystem from "@automation/db".
+ * must use forClient / forClients / forAdmin / forSystem from "@automation/db".
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { dbEnvSchema, loadEnv } from "@automation/config";

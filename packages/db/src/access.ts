@@ -8,8 +8,8 @@ export type Actor = { userId: string; isAdmin: boolean };
 
 const scoped = (scope: Scope): ScopedDb => createScopedClient(getUnscopedPrisma(), scope);
 
-export const forCustomer = (customerId: string): ScopedDb => scoped({ customerIds: [customerId] });
-export const forCustomers = (customerIds: readonly string[]): ScopedDb => scoped({ customerIds });
+export const forClient = (clientId: string): ScopedDb => scoped({ clientIds: [clientId] });
+export const forClients = (clientIds: readonly string[]): ScopedDb => scoped({ clientIds });
 
 /** Unscoped access for platform admins only. */
 export function forAdmin(actor: Pick<Actor, "isAdmin">): ScopedDb {
@@ -17,43 +17,43 @@ export function forAdmin(actor: Pick<Actor, "isAdmin">): ScopedDb {
   return scoped({ all: true });
 }
 
-/** Unscoped access for background jobs that loop over all customers (worker only). */
+/** Unscoped access for background jobs that loop over all clients (worker only). */
 export const forSystem = (): ScopedDb => scoped({ all: true });
 
-/** A client limited to the customers this actor may see. */
+/** A client limited to the clients this actor may see. */
 export async function getActorDb(actor: Actor): Promise<ScopedDb> {
   if (actor.isAdmin) return forAdmin(actor);
   const memberships = await getUnscopedPrisma().membership.findMany({
     where: { userId: actor.userId },
-    select: { customerId: true },
+    select: { clientId: true },
   });
-  return forCustomers(memberships.map((m) => m.customerId));
+  return forClients(memberships.map((m) => m.clientId));
 }
 
-export type CustomerContext = { db: ScopedDb; access: Access; customerId: string };
+export type ClientContext = { db: ScopedDb; access: Access; clientId: string };
 
-/** Resolve the actor's access to one customer. Throws NotFoundError if they have none. */
-export async function getCustomerContext(actor: Actor, customerId: string): Promise<CustomerContext> {
-  const db = forCustomer(customerId);
+/** Resolve the actor's access to one client. Throws NotFoundError if they have none. */
+export async function getClientContext(actor: Actor, clientId: string): Promise<ClientContext> {
+  const db = forClient(clientId);
   if (actor.isAdmin) {
-    const exists = await db.customer.findUnique({ where: { id: customerId }, select: { id: true } });
-    if (!exists) throw new NotFoundError("Customer not found");
-    return { db, customerId, access: { role: "admin", isPlatformAdmin: true } };
+    const exists = await db.client.findUnique({ where: { id: clientId }, select: { id: true } });
+    if (!exists) throw new NotFoundError("Client not found");
+    return { db, clientId, access: { role: "admin", isPlatformAdmin: true } };
   }
   const membership = await getUnscopedPrisma().membership.findUnique({
-    where: { userId_customerId: { userId: actor.userId, customerId } },
+    where: { userId_clientId: { userId: actor.userId, clientId } },
     select: { role: true },
   });
-  if (!membership) throw new NotFoundError("Customer not found");
-  return { db, customerId, access: { role: membership.role, isPlatformAdmin: false } };
+  if (!membership) throw new NotFoundError("Client not found");
+  return { db, clientId, access: { role: membership.role, isPlatformAdmin: false } };
 }
 
 export async function requirePermission(
   actor: Actor,
-  customerId: string,
+  clientId: string,
   permission: Permission,
-): Promise<CustomerContext> {
-  const ctx = await getCustomerContext(actor, customerId);
+): Promise<ClientContext> {
+  const ctx = await getClientContext(actor, clientId);
   if (!can(ctx.access, permission)) throw new ForbiddenError();
   return ctx;
 }

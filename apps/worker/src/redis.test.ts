@@ -3,7 +3,10 @@ import { redisConnection } from "./redis";
 
 describe("redisConnection", () => {
   it("parses a plain url", () => {
-    expect(redisConnection("redis://localhost:6379")).toMatchObject({ host: "localhost", port: 6379 });
+    expect(redisConnection("redis://localhost:6379")).toMatchObject({
+      host: "localhost",
+      port: 6379,
+    });
   });
 
   it("parses credentials, db and tls", () => {

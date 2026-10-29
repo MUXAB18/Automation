@@ -85,13 +85,11 @@ describe("refreshAccessToken", () => {
 
 describe("Search Console client", () => {
   it("lists sites", async () => {
-    const f = vi
-      .fn()
-      .mockResolvedValue(
-        json({
-          siteEntry: [{ siteUrl: "sc-domain:sarjworldwide.ca", permissionLevel: "siteOwner" }],
-        }),
-      );
+    const f = vi.fn().mockResolvedValue(
+      json({
+        siteEntry: [{ siteUrl: "sc-domain:sarjworldwide.ca", permissionLevel: "siteOwner" }],
+      }),
+    );
     expect(await listGscSites("at", { fetch: f })).toEqual([
       { siteUrl: "sc-domain:sarjworldwide.ca", permissionLevel: "siteOwner" },
     ]);
@@ -101,21 +99,19 @@ describe("Search Console client", () => {
   });
 
   it("maps keys to named dimensions and encodes the site url", async () => {
-    const f = vi
-      .fn()
-      .mockResolvedValue(
-        json({
-          rows: [
-            {
-              keys: ["2026-01-01", "seo ottawa"],
-              clicks: 3,
-              impressions: 40,
-              ctr: 0.075,
-              position: 8.2,
-            },
-          ],
-        }),
-      );
+    const f = vi.fn().mockResolvedValue(
+      json({
+        rows: [
+          {
+            keys: ["2026-01-01", "seo ottawa"],
+            clicks: 3,
+            impressions: 40,
+            ctr: 0.075,
+            position: 8.2,
+          },
+        ],
+      }),
+    );
     const rows = await querySearchAnalytics(
       "at",
       {

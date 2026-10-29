@@ -1,18 +1,18 @@
-import { forAdmin, getActorDb, getCustomerContext, requirePermission, type Actor } from "../access";
+import { forAdmin, getActorDb, getClientContext, requirePermission, type Actor } from "../access";
 import { recordAudit } from "../audit";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import type { CustomerStatus } from "../generated/enums";
-import { canCreateCustomer } from "../permissions";
+import type { ClientStatus } from "../generated/enums";
+import { canCreateClient } from "../permissions";
 import {
   addWebsiteSchema,
-  createCustomerSchema,
-  customerStatusSchema,
+  createClientSchema,
+  clientStatusSchema,
   parseInput,
   slugify,
-  updateCustomerSchema,
+  updateClientSchema,
   type AddWebsiteInput,
-  type CreateCustomerInput,
-  type UpdateCustomerInput,
+  type CreateClientInput,
+  type UpdateClientInput,
 } from "../schemas";
 
 const isUniqueViolation = (error: unknown) =>
@@ -32,19 +32,19 @@ const snapshot = (c: {
   reportIntervalDays: c.reportIntervalDays,
 });
 
-export type ListCustomersOptions = {
+export type ListClientsOptions = {
   search?: string;
-  status?: CustomerStatus;
-  /** Limit to one customer (the dashboard's customer switcher). */
-  customerId?: string;
+  status?: ClientStatus;
+  /** Limit to one client (the dashboard's client switcher). */
+  clientId?: string;
 };
 
-export async function listCustomers(actor: Actor, options: ListCustomersOptions = {}) {
-  const db = options.customerId
-    ? (await getCustomerContext(actor, options.customerId)).db
+export async function listClients(actor: Actor, options: ListClientsOptions = {}) {
+  const db = options.clientId
+    ? (await getClientContext(actor, options.clientId)).db
     : await getActorDb(actor);
   const search = options.search?.trim();
-  return db.customer.findMany({
+  return db.client.findMany({
     where: {
       ...(options.status ? { status: options.status } : {}),
       ...(search
@@ -62,29 +62,29 @@ export async function listCustomers(actor: Actor, options: ListCustomersOptions 
   });
 }
 
-export async function getCustomer(actor: Actor, customerId: string) {
-  const ctx = await getCustomerContext(actor, customerId);
-  const customer = await ctx.db.customer.findUnique({
-    where: { id: customerId },
+export async function getClient(actor: Actor, clientId: string) {
+  const ctx = await getClientContext(actor, clientId);
+  const client = await ctx.db.client.findUnique({
+    where: { id: clientId },
     include: { websites: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] } },
   });
-  if (!customer) throw new NotFoundError("Customer not found");
-  return { customer, access: ctx.access };
+  if (!client) throw new NotFoundError("Client not found");
+  return { client, access: ctx.access };
 }
 
-export async function getOverviewStats(actor: Actor, customerId?: string) {
-  const db = customerId ? (await getCustomerContext(actor, customerId)).db : await getActorDb(actor);
-  const groups = await db.customer.groupBy({ by: ["status"], _count: { _all: true } });
-  const count = (status: CustomerStatus) => groups.find((g) => g.status === status)?._count._all ?? 0;
+export async function getOverviewStats(actor: Actor, clientId?: string) {
+  const db = clientId ? (await getClientContext(actor, clientId)).db : await getActorDb(actor);
+  const groups = await db.client.groupBy({ by: ["status"], _count: { _all: true } });
+  const count = (status: ClientStatus) => groups.find((g) => g.status === status)?._count._all ?? 0;
   const active = count("active");
   const paused = count("paused");
   const archived = count("archived");
   return { total: active + paused + archived, active, paused, archived };
 }
 
-export async function createCustomer(actor: Actor, input: CreateCustomerInput) {
-  if (!canCreateCustomer(actor)) throw new ForbiddenError("Only admins can create customers");
-  const data = parseInput(createCustomerSchema, input);
+export async function createClient(actor: Actor, input: CreateClientInput) {
+  if (!canCreateClient(actor)) throw new ForbiddenError("Only admins can create clients");
+  const data = parseInput(createClientSchema, input);
   const db = forAdmin(actor);
   const baseSlug = data.slug ?? slugify(data.name);
 
@@ -93,7 +93,7 @@ export async function createCustomer(actor: Actor, input: CreateCustomerInput) {
     const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`.slice(0, 60);
     try {
       return await db.$transaction(async (tx) => {
-        const customer = await tx.customer.create({
+        const client = await tx.client.create({
           data: {
             name: data.name,
             slug,
@@ -103,18 +103,18 @@ export async function createCustomer(actor: Actor, input: CreateCustomerInput) {
         });
         if (data.primaryDomain) {
           await tx.website.create({
-            data: { customerId: customer.id, domain: data.primaryDomain, isPrimary: true },
+            data: { clientId: client.id, domain: data.primaryDomain, isPrimary: true },
           });
         }
         await recordAudit(tx, {
           actorUserId: actor.userId,
-          customerId: customer.id,
-          action: "customer.created",
-          entityType: "customer",
-          entityId: customer.id,
-          after: { ...snapshot(customer), primaryDomain: data.primaryDomain ?? null },
+          clientId: client.id,
+          action: "client.created",
+          entityType: "client",
+          entityId: client.id,
+          after: { ...snapshot(client), primaryDomain: data.primaryDomain ?? null },
         });
-        return customer;
+        return client;
       });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
@@ -124,15 +124,15 @@ export async function createCustomer(actor: Actor, input: CreateCustomerInput) {
   throw new ConflictError("Could not generate a unique slug; enter one manually");
 }
 
-export async function updateCustomer(actor: Actor, customerId: string, input: UpdateCustomerInput) {
-  const ctx = await requirePermission(actor, customerId, "customer.update");
-  const data = parseInput(updateCustomerSchema, input);
+export async function updateClient(actor: Actor, clientId: string, input: UpdateClientInput) {
+  const ctx = await requirePermission(actor, clientId, "client.update");
+  const data = parseInput(updateClientSchema, input);
   try {
     return await ctx.db.$transaction(async (tx) => {
-      const before = await tx.customer.findUnique({ where: { id: customerId } });
-      if (!before) throw new NotFoundError("Customer not found");
-      const after = await tx.customer.update({
-        where: { id: customerId },
+      const before = await tx.client.findUnique({ where: { id: clientId } });
+      if (!before) throw new NotFoundError("Client not found");
+      const after = await tx.client.update({
+        where: { id: clientId },
         data: {
           name: data.name,
           slug: data.slug,
@@ -142,35 +142,36 @@ export async function updateCustomer(actor: Actor, customerId: string, input: Up
       });
       await recordAudit(tx, {
         actorUserId: actor.userId,
-        customerId,
-        action: "customer.updated",
-        entityType: "customer",
-        entityId: customerId,
+        clientId,
+        action: "client.updated",
+        entityType: "client",
+        entityId: clientId,
         before: snapshot(before),
         after: snapshot(after),
       });
       return after;
     });
   } catch (error) {
-    if (isUniqueViolation(error)) throw new ConflictError(`The slug "${data.slug}" is already in use`);
+    if (isUniqueViolation(error))
+      throw new ConflictError(`The slug "${data.slug}" is already in use`);
     throw error;
   }
 }
 
-export async function setCustomerStatus(actor: Actor, customerId: string, status: CustomerStatus) {
-  const ctx = await requirePermission(actor, customerId, "customer.status");
-  const next = parseInput(customerStatusSchema, status);
+export async function setClientStatus(actor: Actor, clientId: string, status: ClientStatus) {
+  const ctx = await requirePermission(actor, clientId, "client.status");
+  const next = parseInput(clientStatusSchema, status);
   return ctx.db.$transaction(async (tx) => {
-    const before = await tx.customer.findUnique({ where: { id: customerId } });
-    if (!before) throw new NotFoundError("Customer not found");
+    const before = await tx.client.findUnique({ where: { id: clientId } });
+    if (!before) throw new NotFoundError("Client not found");
     if (before.status === next) return before;
-    const after = await tx.customer.update({ where: { id: customerId }, data: { status: next } });
+    const after = await tx.client.update({ where: { id: clientId }, data: { status: next } });
     await recordAudit(tx, {
       actorUserId: actor.userId,
-      customerId,
-      action: "customer.status_changed",
-      entityType: "customer",
-      entityId: customerId,
+      clientId,
+      action: "client.status_changed",
+      entityType: "client",
+      entityId: clientId,
       before: { status: before.status },
       after: { status: after.status },
     });
@@ -178,20 +179,21 @@ export async function setCustomerStatus(actor: Actor, customerId: string, status
   });
 }
 
-export async function addWebsite(actor: Actor, customerId: string, input: AddWebsiteInput) {
-  const ctx = await requirePermission(actor, customerId, "website.manage");
+export async function addWebsite(actor: Actor, clientId: string, input: AddWebsiteInput) {
+  const ctx = await requirePermission(actor, clientId, "website.manage");
   const data = parseInput(addWebsiteSchema, input);
   try {
     return await ctx.db.$transaction(async (tx) => {
       const existing = await tx.website.count();
       const isPrimary = data.isPrimary || existing === 0;
-      if (isPrimary) await tx.website.updateMany({ where: { isPrimary: true }, data: { isPrimary: false } });
+      if (isPrimary)
+        await tx.website.updateMany({ where: { isPrimary: true }, data: { isPrimary: false } });
       const website = await tx.website.create({
-        data: { customerId, domain: data.domain, isPrimary },
+        data: { clientId, domain: data.domain, isPrimary },
       });
       await recordAudit(tx, {
         actorUserId: actor.userId,
-        customerId,
+        clientId,
         action: "website.added",
         entityType: "website",
         entityId: website.id,
@@ -205,8 +207,8 @@ export async function addWebsite(actor: Actor, customerId: string, input: AddWeb
   }
 }
 
-export async function removeWebsite(actor: Actor, customerId: string, websiteId: string) {
-  const ctx = await requirePermission(actor, customerId, "website.manage");
+export async function removeWebsite(actor: Actor, clientId: string, websiteId: string) {
+  const ctx = await requirePermission(actor, clientId, "website.manage");
   await ctx.db.$transaction(async (tx) => {
     const website = await tx.website.findUnique({ where: { id: websiteId } });
     if (!website) throw new NotFoundError("Website not found");
@@ -217,7 +219,7 @@ export async function removeWebsite(actor: Actor, customerId: string, websiteId:
     }
     await recordAudit(tx, {
       actorUserId: actor.userId,
-      customerId,
+      clientId,
       action: "website.removed",
       entityType: "website",
       entityId: websiteId,
@@ -226,8 +228,8 @@ export async function removeWebsite(actor: Actor, customerId: string, websiteId:
   });
 }
 
-export async function listAuditLog(actor: Actor, customerId: string, limit = 10) {
-  const ctx = await getCustomerContext(actor, customerId);
+export async function listAuditLog(actor: Actor, clientId: string, limit = 10) {
+  const ctx = await getClientContext(actor, clientId);
   return ctx.db.auditLog.findMany({
     orderBy: { createdAt: "desc" },
     take: limit,

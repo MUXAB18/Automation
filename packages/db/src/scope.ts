@@ -1,19 +1,19 @@
 import type { PrismaClient } from "./generated/client";
 import { ScopeViolationError } from "./errors";
 
-/** Which customers a query may touch. `all` must be reached via forAdmin/forSystem. */
-export type Scope = { readonly customerIds: readonly string[] } | { readonly all: true };
+/** Which clients a query may touch. `all` must be reached via forAdmin/forSystem. */
+export type Scope = { readonly clientIds: readonly string[] } | { readonly all: true };
 
 type Args = Record<string, unknown> | undefined;
 
-/** Prisma model name -> the column that holds the owning customer id. */
+/** Prisma model name -> the column that holds the owning client id. */
 export const TENANT_MODELS: Record<string, string> = {
-  Customer: "id",
-  Website: "customerId",
-  Membership: "customerId",
-  JobRun: "customerId",
-  AuditLog: "customerId",
-  IntegrationConnection: "customerId",
+  Client: "id",
+  Website: "clientId",
+  Membership: "clientId",
+  JobRun: "clientId",
+  AuditLog: "clientId",
+  IntegrationConnection: "clientId",
 };
 
 const FILTERED_OPS = new Set([
@@ -41,7 +41,7 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 function assertAllowed(value: unknown, ids: readonly string[], what: string): void {
   if (value === undefined) return;
   if (typeof value !== "string" || !ids.includes(value)) {
-    throw new ScopeViolationError(`${what} is outside the allowed customer scope`);
+    throw new ScopeViolationError(`${what} is outside the allowed client scope`);
   }
 }
 
@@ -51,15 +51,17 @@ function scopeCreateData(
   data: Record<string, unknown>,
   ids: readonly string[],
 ): Record<string, unknown> {
-  if (model === "Customer") {
-    throw new ScopeViolationError("Customers can only be created with admin scope");
+  if (model === "Client") {
+    throw new ScopeViolationError("Clients can only be created with admin scope");
   }
-  if ("customer" in data) {
-    throw new ScopeViolationError("Set customerId directly; nested customer relations are not allowed");
+  if ("client" in data) {
+    throw new ScopeViolationError("Set clientId directly; nested client relations are not allowed");
   }
   if (data[field] === undefined) {
     if (ids.length !== 1) {
-      throw new ScopeViolationError(`${model}.${field} must be set explicitly in a multi-customer scope`);
+      throw new ScopeViolationError(
+        `${model}.${field} must be set explicitly in a multi-client scope`,
+      );
     }
     return { ...data, [field]: ids[0] };
   }
@@ -69,12 +71,12 @@ function scopeCreateData(
 
 /**
  * Pure function: rewrites Prisma operation args so they can only touch the
- * scoped customers. Exported for unit tests.
+ * scoped clients. Exported for unit tests.
  */
 export function scopeArgs(model: string, operation: string, args: Args, scope: Scope): Args {
   const field = TENANT_MODELS[model];
   if (!field || "all" in scope) return args;
-  const ids = scope.customerIds;
+  const ids = scope.clientIds;
   const next: Record<string, unknown> = { ...args };
 
   if (FILTERED_OPS.has(operation)) {
@@ -88,14 +90,15 @@ export function scopeArgs(model: string, operation: string, args: Args, scope: S
     } else if (operation === "create") {
       next.data = scopeCreateData(model, field, next.data as Record<string, unknown>, ids);
     } else {
-      next.data = asArray(next.data as Record<string, unknown> | Record<string, unknown>[]).map((row) =>
-        scopeCreateData(model, field, row, ids),
+      next.data = asArray(next.data as Record<string, unknown> | Record<string, unknown>[]).map(
+        (row) => scopeCreateData(model, field, row, ids),
       );
     }
   }
 
   if (operation.startsWith("update") || operation === "upsert") {
-    const update = (operation === "upsert" ? next.update : next.data) as Record<string, unknown> | undefined;
+    const update = (operation === "upsert" ? next.update : next.data) as
+      Record<string, unknown> | undefined;
     if (update && field !== "id") assertAllowed(update[field], ids, `${model}.${field}`);
   }
 
@@ -104,7 +107,7 @@ export function scopeArgs(model: string, operation: string, args: Args, scope: S
 
 export function createScopedClient(base: PrismaClient, scope: Scope) {
   return base.$extends({
-    name: "customer-scope",
+    name: "client-scope",
     query: {
       $allModels: {
         $allOperations({ model, operation, args, query }) {

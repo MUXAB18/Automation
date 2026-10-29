@@ -29,20 +29,20 @@ export const domainSchema = z
   .transform(normalizeDomain)
   .pipe(z.string().regex(HOSTNAME, "Enter a valid domain, e.g. example.com"));
 
-const customerFields = {
+const clientFields = {
   name: z.string().trim().min(1, "Name is required").max(120),
   reportEmail: z.preprocess(emptyToUndefined, z.email("Enter a valid email").optional()),
   reportIntervalDays: z.coerce.number().int().min(1).max(365).default(15),
 };
 
-export const createCustomerSchema = z.object({
-  ...customerFields,
+export const createClientSchema = z.object({
+  ...clientFields,
   slug: z.preprocess(emptyToUndefined, slugSchema.optional()),
   primaryDomain: z.preprocess(emptyToUndefined, domainSchema.optional()),
 });
 
-export const updateCustomerSchema = z.object({
-  ...customerFields,
+export const updateClientSchema = z.object({
+  ...clientFields,
   slug: slugSchema,
 });
 
@@ -51,10 +51,10 @@ export const addWebsiteSchema = z.object({
   isPrimary: z.coerce.boolean().default(false),
 });
 
-export const customerStatusSchema = z.enum(["active", "paused", "archived"]);
+export const clientStatusSchema = z.enum(["active", "paused", "archived"]);
 
-export type CreateCustomerInput = z.input<typeof createCustomerSchema>;
-export type UpdateCustomerInput = z.input<typeof updateCustomerSchema>;
+export type CreateClientInput = z.input<typeof createClientSchema>;
+export type UpdateClientInput = z.input<typeof updateClientSchema>;
 export type AddWebsiteInput = z.input<typeof addWebsiteSchema>;
 
 /** Parse with a schema, throwing ValidationError with per-field messages. */
@@ -78,5 +78,5 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 60)
     .replace(/-+$/g, "");
-  return slug.length >= 2 ? slug : `customer-${slug || "x"}`;
+  return slug.length >= 2 ? slug : `client-${slug || "x"}`;
 }

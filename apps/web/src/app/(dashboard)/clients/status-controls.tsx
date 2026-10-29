@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import type { CustomerStatus } from "@automation/db";
+import type { ClientStatus } from "@automation/db";
 import { Button } from "@/components/ui/button";
 import type { FormState } from "@/lib/action-state";
 
 const TRANSITIONS: Record<
-  CustomerStatus,
-  { status: CustomerStatus; label: string; variant: "outline" | "destructive" }[]
+  ClientStatus,
+  { status: ClientStatus; label: string; variant: "outline" | "destructive" }[]
 > = {
   active: [
     { status: "paused", label: "Pause", variant: "outline" },
@@ -24,7 +24,7 @@ export function StatusControls({
   status,
   action,
 }: {
-  status: CustomerStatus;
+  status: ClientStatus;
   action: (prev: FormState, formData: FormData) => Promise<FormState>;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, {});

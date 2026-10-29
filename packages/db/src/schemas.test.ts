@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "./errors";
-import { createCustomerSchema, normalizeDomain, parseInput, slugify } from "./schemas";
+import { createClientSchema, normalizeDomain, parseInput, slugify } from "./schemas";
 
 describe("normalizeDomain", () => {
   it("strips protocol, path, port and case", () => {
@@ -18,22 +18,30 @@ describe("slugify", () => {
   });
 });
 
-describe("createCustomerSchema", () => {
+describe("createClientSchema", () => {
   it("applies defaults and normalizes the domain", () => {
-    const data = parseInput(createCustomerSchema, { name: "Acme", primaryDomain: "https://Acme.com/" });
+    const data = parseInput(createClientSchema, {
+      name: "Acme",
+      primaryDomain: "https://Acme.com/",
+    });
     expect(data.reportIntervalDays).toBe(15);
     expect(data.primaryDomain).toBe("acme.com");
     expect(data.slug).toBeUndefined();
   });
 
   it("treats empty optional fields as absent", () => {
-    const data = parseInput(createCustomerSchema, { name: "Acme", slug: "", reportEmail: "", primaryDomain: "" });
+    const data = parseInput(createClientSchema, {
+      name: "Acme",
+      slug: "",
+      reportEmail: "",
+      primaryDomain: "",
+    });
     expect(data.reportEmail).toBeUndefined();
   });
 
   it("reports field errors", () => {
     try {
-      parseInput(createCustomerSchema, { name: "", reportEmail: "nope", reportIntervalDays: 0 });
+      parseInput(createClientSchema, { name: "", reportEmail: "nope", reportIntervalDays: 0 });
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);

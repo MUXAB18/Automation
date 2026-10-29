@@ -2,7 +2,7 @@ export type FetchLike = typeof fetch;
 
 /** Thrown when Google rejects a stored refresh token; the connection must be re-authorised. */
 export class GoogleReauthRequiredError extends Error {
-  constructor(message = "Google access was revoked or expired; the customer must reconnect") {
+  constructor(message = "Google access was revoked or expired; the client must reconnect") {
     super(message);
     this.name = "GoogleReauthRequiredError";
   }

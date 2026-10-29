@@ -7,7 +7,7 @@ const request = (path: string, cookie?: string) =>
 
 describe("proxy", () => {
   it("sends signed-out visitors to /login", () => {
-    const res = proxy(request("/customers"));
+    const res = proxy(request("/clients"));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/login");
   });
@@ -18,7 +18,7 @@ describe("proxy", () => {
 
   it("lets visitors with a session cookie through and bounces them off /login", () => {
     const cookie = "better-auth.session_token=abc.def";
-    expect(proxy(request("/customers", cookie)).headers.get("location")).toBeNull();
+    expect(proxy(request("/clients", cookie)).headers.get("location")).toBeNull();
     expect(proxy(request("/login", cookie)).headers.get("location")).toBe("http://localhost:3000/");
   });
 });

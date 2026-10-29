@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 const ITEMS = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/customers", label: "Customers", icon: Users },
+  { href: "/clients", label: "Clients", icon: Users },
   { label: "Rankings", icon: LineChart },
   { label: "Content", icon: FileText },
   { label: "Social", icon: Share2 },

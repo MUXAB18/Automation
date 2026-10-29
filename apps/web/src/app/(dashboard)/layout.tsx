@@ -2,10 +2,10 @@ import { LogOut } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { getActiveCustomer } from "@/lib/active-customer";
+import { getActiveClient } from "@/lib/active-client";
 import { requireActor } from "@/lib/session";
 import { signOutAction } from "../login/actions";
-import { CustomerSwitcher } from "./customer-switcher";
+import { ClientSwitcher } from "./client-switcher";
 
 function initials(name: string, email: string) {
   const source = name.trim() || email;
@@ -15,7 +15,7 @@ function initials(name: string, email: string) {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const actor = await requireActor();
-  const { options, activeId } = await getActiveCustomer(actor);
+  const { options, activeId } = await getActiveClient(actor);
 
   return (
     <div className="flex min-h-screen">
@@ -55,7 +55,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-background/80 px-4 py-3 backdrop-blur md:px-8">
           <div className="flex items-center gap-3">
             <BrandMark className="size-8 md:hidden" />
-            <CustomerSwitcher options={options} activeId={activeId} allowAll={actor.isAdmin} />
+            <ClientSwitcher options={options} activeId={activeId} allowAll={actor.isAdmin} />
           </div>
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">

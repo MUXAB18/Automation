@@ -2,13 +2,13 @@ import { CheckCircle2, Circle, PauseCircle, Users } from "lucide-react";
 import { getOverviewStats } from "@automation/db";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getActiveCustomer } from "@/lib/active-customer";
+import { getActiveClient } from "@/lib/active-client";
 import { requireActor } from "@/lib/session";
 
 export const metadata = { title: "Overview" };
 
 const ROADMAP = [
-  { label: "Foundation: customers, roles and audit log", done: true },
+  { label: "Foundation: clients, roles and audit log", done: true },
   { label: "Connect Google Search Console and GA4", done: false },
   { label: "Rankings and traffic dashboards", done: false },
   { label: "Content drafts with approval", done: false },
@@ -17,12 +17,12 @@ const ROADMAP = [
 
 export default async function OverviewPage() {
   const actor = await requireActor();
-  const { activeId, options } = await getActiveCustomer(actor);
+  const { activeId, options } = await getActiveClient(actor);
   const stats = await getOverviewStats(actor, activeId);
-  const scopeName = activeId ? options.find((o) => o.id === activeId)?.name : "All customers";
+  const scopeName = activeId ? options.find((o) => o.id === activeId)?.name : "All clients";
 
   const cards = [
-    { label: "Customers", value: stats.total, icon: Users, tone: "bg-primary-soft text-primary" },
+    { label: "Clients", value: stats.total, icon: Users, tone: "bg-primary-soft text-primary" },
     {
       label: "Active",
       value: stats.active,
@@ -36,7 +36,7 @@ export default async function OverviewPage() {
     <>
       <PageHeader
         title={`Hello, ${actor.name.split(" ")[0] || "there"}`}
-        description={`Here's where things stand for ${scopeName ?? "your customers"}.`}
+        description={`Here's where things stand for ${scopeName ?? "your clients"}.`}
       />
       <div className="grid gap-4 sm:grid-cols-3">
         {cards.map(({ label, value, icon: Icon, tone }) => (
