@@ -149,6 +149,7 @@ model ContentItem {
   contentApprovals ContentApproval[]
   publishingJobs   PublishingJob[]
   publishedPosts   PublishedPost[]
+  tasks            Task[]
 
   @@unique([id, clientId])
   @@index([clientId, status, scheduledFor])

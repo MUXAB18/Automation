@@ -412,7 +412,7 @@ export async function getClientSummary(actor: Actor, clientId: string) {
   };
   const taskWhere: Prisma.TaskWhereInput = {
     archivedAt: null,
-    status: { notIn: ["done", "cancelled"] },
+    status: { notIn: ["completed", "cancelled"] },
     ...(projectIds ? { projectId: { in: projectIds } } : {}),
   };
   const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

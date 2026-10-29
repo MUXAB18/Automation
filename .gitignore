@@ -8,3 +8,4 @@ dist
 *.log
 .DS_Store
 packages/db/src/generated
+.data/

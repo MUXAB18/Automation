@@ -24,6 +24,8 @@ const tokenPageHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Task attachments are uploaded through a server action (max 10 MB file + form overhead).
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
   async headers() {
     return [
       { source: "/:path*", headers: baseHeaders },

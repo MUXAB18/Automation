@@ -17,7 +17,17 @@ export * from "./services/brand";
 export * from "./services/clients";
 export * from "./services/job-runs";
 export * from "./services/projects";
+export * from "./services/task-queries";
+export * from "./services/task-rules";
+export * from "./services/tasks";
 export * from "./services/team";
+export {
+  endOfDayInTimeZone,
+  startOfDayInTimeZone,
+  dateInTimeZone,
+  daysOfMonth,
+  isMonth,
+} from "./dates";
 export * from "./services/workspace";
 export {
   ActorType,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { FormState } from "@/lib/action-state";
 
 /**
@@ -11,6 +11,11 @@ import type { FormState } from "@/lib/action-state";
 export function useServerForm(action: (prev: FormState, formData: FormData) => Promise<FormState>) {
   const [state, setState] = useState<FormState>({});
   const [pending, start] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  // After a successful save, empty the fields (comment boxes, upload pickers). Failed saves keep them.
+  useEffect(() => {
+    if (state.ok) formRef.current?.reset();
+  }, [state]);
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -18,5 +23,5 @@ export function useServerForm(action: (prev: FormState, formData: FormData) => P
       setState(await action({}, data));
     });
   };
-  return { state, pending, onSubmit };
+  return { state, pending, onSubmit, formRef };
 }

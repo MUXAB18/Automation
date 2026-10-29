@@ -284,3 +284,77 @@ export async function getAccessMap(actor: Actor): Promise<AccessMap> {
 export function clientIdsWith(map: AccessMap, permission: Permission): string[] {
   return [...map].filter(([, e]) => e.permissions.has(permission)).map(([id]) => id);
 }
+
+/**
+ * What ANOTHER user may do on a client (for validating assignees and finding reviewers). Same rules as
+ * getClientContext but never throws or logs: returns null when they have no access at all.
+ */
+export async function resolveUserAccess(
+  userId: string,
+  clientId: string,
+  agencyId: string,
+): Promise<Access | null> {
+  const prisma = getUnscopedPrisma();
+  const [user, membership, agencyMembership] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { deactivatedAt: true, isAdmin: true },
+    }),
+    prisma.clientMembership.findUnique({
+      where: { userId_clientId: { userId, clientId } },
+      select: { status: true, roles: ROLES_SELECT },
+    }),
+    prisma.agencyMembership.findUnique({
+      where: { agencyId_userId: { agencyId, userId } },
+      select: { status: true, allClientsAccess: true, roles: ROLES_SELECT },
+    }),
+  ]);
+  if (!user || user.deactivatedAt) return null;
+  if (user.isAdmin)
+    return { permissions: ALL_PERMISSIONS, roles: ["platform_admin"], isPlatformAdmin: true };
+  const permissions = new Set<Permission>();
+  const roles = new Set<string>();
+  if (agencyMembership?.status === "active") {
+    if (membership?.status === "active") collect(membership.roles, permissions, roles, true);
+    if (agencyMembership.allClientsAccess)
+      collect(agencyMembership.roles, permissions, roles, false);
+  }
+  return roles.size === 0 ? null : { permissions, roles: [...roles], isPlatformAdmin: false };
+}
+
+/** Active people (not platform admins) who hold a permission on a client, e.g. everyone who can review tasks. */
+export async function listUsersWithPermission(
+  agencyId: string,
+  clientId: string,
+  permission: Permission,
+): Promise<string[]> {
+  const prisma = getUnscopedPrisma();
+  const hasPermission = {
+    some: { role: { rolePermissions: { some: { permission: { key: permission } } } } },
+  };
+  const activeUser = { deactivatedAt: null };
+  const [direct, wide] = await Promise.all([
+    prisma.clientMembership.findMany({
+      where: {
+        clientId,
+        status: "active",
+        roles: hasPermission,
+        agencyMembership: { status: "active", user: activeUser },
+      },
+      select: { userId: true },
+    }),
+    permission.startsWith("agency.") || permission === "client.create"
+      ? Promise.resolve([])
+      : prisma.agencyMembership.findMany({
+          where: {
+            agencyId,
+            status: "active",
+            allClientsAccess: true,
+            roles: hasPermission,
+            user: activeUser,
+          },
+          select: { userId: true },
+        }),
+  ]);
+  return [...new Set([...direct, ...wide].map((m) => m.userId))];
+}

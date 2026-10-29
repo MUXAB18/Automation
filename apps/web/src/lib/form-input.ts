@@ -63,3 +63,23 @@ export function projectInput(formData: FormData) {
         : undefined,
   };
 }
+
+/** The task create/edit form. The estimate is typed in hours (e.g. 1.5) and stored in minutes. */
+export function taskInput(formData: FormData) {
+  const hours = text(formData, "estimateHours")?.trim();
+  const estimate = hours ? Math.round(Number(hours.replace(",", ".")) * 60) : undefined;
+  return {
+    title: text(formData, "title") ?? "",
+    description: text(formData, "description"),
+    acceptanceCriteria: text(formData, "acceptanceCriteria"),
+    type: text(formData, "type") ?? "general",
+    priority: text(formData, "priority") ?? "medium",
+    projectId: text(formData, "projectId"),
+    dueDate: text(formData, "dueDate"),
+    estimateMinutes: Number.isNaN(estimate) ? -1 : estimate,
+    assigneeId: text(formData, "assigneeId"),
+    contentItemId: text(formData, "contentItemId"),
+    seoIssueIds: formData.getAll("seoIssueIds").filter((v): v is string => typeof v === "string"),
+    labels: text(formData, "labels") ?? "",
+  };
+}

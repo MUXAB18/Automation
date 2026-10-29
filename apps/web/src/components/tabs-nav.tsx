@@ -7,7 +7,11 @@ import { cn } from "@/lib/utils";
 export type Tab = {
   href: string;
   label: string;
-  /** Match only this exact path (for the first tab). */ exact?: boolean;
+  /** Match only this exact path (for the first tab). */
+  exact?: boolean;
+  /** A small number shown beside the label (e.g. overdue tasks). */
+  count?: number;
+  countTone?: "neutral" | "danger";
 };
 
 /** Link-based tabs: each tab is its own page, so every view is linkable and server-rendered. */
@@ -32,6 +36,19 @@ export function TabsNav({ tabs, label }: { tabs: Tab[]; label: string }) {
             )}
           >
             {t.label}
+            {t.count !== undefined && t.count > 0 ? (
+              <span
+                className={cn(
+                  "ml-2 rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
+                  t.countTone === "danger"
+                    ? "bg-destructive/15 text-destructive"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                {t.count}
+                <span className="sr-only"> items</span>
+              </span>
+            ) : null}
           </Link>
         );
       })}

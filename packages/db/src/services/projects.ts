@@ -76,7 +76,7 @@ export async function searchProjects(actor: Actor, f: ProjectSearch = {}) {
         _count: {
           select: {
             projectMemberships: true,
-            tasks: { where: { archivedAt: null, status: { notIn: ["done", "cancelled"] } } },
+            tasks: { where: { archivedAt: null, status: { notIn: ["completed", "cancelled"] } } },
           },
         },
       },
@@ -374,7 +374,7 @@ export async function getProjectDetail(actor: Actor, projectId: string) {
   const openTask: Prisma.TaskWhereInput = {
     projectId,
     archivedAt: null,
-    status: { notIn: ["done", "cancelled"] },
+    status: { notIn: ["completed", "cancelled"] },
   };
   const seoProjectId = project.seoProject?.id;
 

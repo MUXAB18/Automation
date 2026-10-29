@@ -28,3 +28,11 @@ export function toFormState(error: unknown): FormState {
   if (error instanceof ScopeViolationError) return { error: "That action is outside your access" };
   throw error;
 }
+
+/** One readable sentence for toasts and dialogs: the first field message of a validation error, or the error's own text. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof ValidationError) {
+    return Object.values(error.fieldErrors).flat()[0] ?? "Please check the form";
+  }
+  return toFormState(error).error ?? "Something went wrong";
+}

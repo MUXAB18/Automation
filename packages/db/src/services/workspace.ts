@@ -105,44 +105,6 @@ export async function listProjectOptions(actor: Actor, clientId: string | undefi
   });
 }
 
-// ---- Tasks -------------------------------------------------------------------------------------
-
-export type TaskFilters = Selection &
-  Page & { q?: string; status?: string; priority?: string; mine?: boolean; open?: boolean };
-
-export async function listTasks(actor: Actor, f: TaskFilters = {}) {
-  const r = await resolve(actor, "task.view", f);
-  const db = forClients(r.clientIds);
-  const page = clampPage(f.page);
-  const where: Prisma.TaskWhereInput = {
-    ...(tenantWhere(r, "projectId") as Prisma.TaskWhereInput),
-    archivedAt: null,
-    ...(f.status
-      ? { status: f.status as never }
-      : f.open
-        ? { status: { notIn: ["done", "cancelled"] } }
-        : {}),
-    ...(f.priority ? { priority: f.priority as never } : {}),
-    ...(f.mine ? { assigneeId: actor.userId } : {}),
-    ...(contains(f.q) ? { title: contains(f.q) } : {}),
-  };
-  const [rows, total] = await Promise.all([
-    db.task.findMany({
-      where,
-      orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        client: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-        assignee: { select: { id: true, name: true } },
-      },
-    }),
-    db.task.count({ where }),
-  ]);
-  return paged(rows, total, page);
-}
-
 // ---- SEO ---------------------------------------------------------------------------------------
 
 export async function getSeoWorkspace(actor: Actor, f: Selection & Page & { q?: string } = {}) {
@@ -400,6 +362,7 @@ export type OverviewSections = {
 export async function getOverview(actor: Actor, selection: Selection = {}) {
   const map = await getAccessMap(actor);
   const sel = { clientId: selection.clientId };
+  const reviewScope = await resolve(actor, "task.review", selection);
   const [taskScope, contentScope, seoScope, integrationScope, viewScope] = await Promise.all([
     resolve(actor, "task.view", selection),
     resolve(actor, "content.view", selection),
@@ -426,7 +389,10 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
     ...(tenantWhere(taskScope, "projectId") as Prisma.TaskWhereInput),
     archivedAt: null,
   };
-  const open: Prisma.TaskWhereInput = { ...taskBase, status: { notIn: ["done", "cancelled"] } };
+  const open: Prisma.TaskWhereInput = {
+    ...taskBase,
+    status: { notIn: ["completed", "cancelled"] },
+  };
   const contentBase = {
     ...(tenantWhere(contentScope, "projectId") as Prisma.ContentItemWhereInput),
     archivedAt: null,
@@ -447,6 +413,7 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
     activity,
     sampleTasks,
     sampleContent,
+    reviewQueue,
   ] = await Promise.all([
     vdb.client.groupBy({ by: ["status"], _count: { _all: true } }),
     tdb.task.count({ where: open }),
@@ -496,13 +463,28 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
     }),
     tdb.task.count({ where: { ...taskBase, isSample: true } }),
     cdb.contentItem.count({ where: { ...contentBase, isSample: true } }),
+    reviewScope.clientIds.length
+      ? forClients(reviewScope.clientIds).task.count({
+          where: {
+            ...taskBase,
+            status: "ready_for_review",
+            clientId: { in: reviewScope.clientIds },
+          },
+        })
+      : Promise.resolve(0),
   ]);
 
   const count = (status: string) => clientGroups.find((g) => g.status === status)?._count._all ?? 0;
   return {
     sections,
     clients: { active: count("active"), paused: count("paused"), archived: count("archived") },
-    tasks: { open: openTasks, overdue: overdueTasks, mine: myTasks, mineCount: myTaskCount },
+    tasks: {
+      open: openTasks,
+      overdue: overdueTasks,
+      mine: myTasks,
+      mineCount: myTaskCount,
+      awaitingReview: reviewQueue,
+    },
     content: { pendingApprovals, upcoming: upcomingContent, upcomingCount: upcomingContentCount },
     seo: {
       openIssues: issueGroups.reduce((n, g) => n + g._count._all, 0),

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   createClientSchema,
   createProjectSchema,
+  createTaskSchema,
   updateClientSchema,
   updateProjectSchema,
+  updateTaskSchema,
 } from "@automation/db";
-import { clientInput, projectInput } from "./form-input";
+import { clientInput, projectInput, taskInput } from "./form-input";
 
 /** Build FormData the way the browser posts the forms (multi-value fields repeat). */
 function form(fields: [string, string][]): FormData {
@@ -140,5 +142,80 @@ describe("project form -> schema", () => {
     expect(result.success).toBe(false);
     const keys = new Set(result.error?.issues.map((i) => i.path.join(".")));
     expect(keys).toEqual(new Set(["name", "endsOn", "seo.websiteId"]));
+  });
+});
+
+describe("task form -> schema", () => {
+  const base: [string, string][] = [
+    ["title", " Fix the title tags "],
+    ["description", "Details"],
+    ["acceptanceCriteria", "All pages have unique titles\nNo duplicates"],
+    ["type", "seo_fix"],
+    ["priority", "high"],
+    ["projectId", "p1"],
+    ["dueDate", "2026-06-30"],
+    ["estimateHours", "1.5"],
+    ["assigneeId", "u1"],
+    ["contentItemId", ""],
+    ["seoIssueIds", "i1"],
+    ["seoIssueIds", "i2"],
+    ["labels", "seo, quick win"],
+  ];
+
+  it("posts exactly what the create schema accepts, converting hours to minutes", () => {
+    const parsed = createTaskSchema.parse({ clientId: "c1", ...taskInput(form(base)) });
+    expect(parsed).toMatchObject({
+      title: "Fix the title tags",
+      type: "seo_fix",
+      priority: "high",
+      estimateMinutes: 90,
+      dueDate: "2026-06-30",
+      assigneeId: "u1",
+      seoIssueIds: ["i1", "i2"],
+      labels: ["seo", "quick win"],
+    });
+    expect(parsed.contentItemId).toBeUndefined();
+  });
+
+  it("treats blank optional fields as not set", () => {
+    const parsed = createTaskSchema.parse({
+      clientId: "c1",
+      ...taskInput(
+        form([
+          ["title", "Just a title"],
+          ["estimateHours", ""],
+          ["dueDate", ""],
+          ["assigneeId", ""],
+          ["projectId", ""],
+        ]),
+      ),
+    });
+    expect(parsed).toMatchObject({
+      type: "general",
+      priority: "medium",
+      labels: [],
+      seoIssueIds: [],
+    });
+    expect(parsed.estimateMinutes).toBeUndefined();
+    expect(parsed.dueDate).toBeUndefined();
+    expect(parsed.assigneeId).toBeUndefined();
+  });
+
+  it("reports a nonsense estimate against the field that holds it", () => {
+    const result = createTaskSchema.safeParse({
+      clientId: "c1",
+      ...taskInput(
+        form([
+          ["title", "T"],
+          ["estimateHours", "abc"],
+        ]),
+      ),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.path.join("."))).toEqual(["estimateMinutes"]);
+  });
+
+  it("works for the edit schema (no client or assignee)", () => {
+    expect(updateTaskSchema.parse(taskInput(form(base))).title).toBe("Fix the title tags");
   });
 });

@@ -205,16 +205,16 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
   // Sample tasks: every one is flagged is_sample so the UI labels them as development data.
   const day = 24 * 60 * 60 * 1000;
   const sampleTasks = [
-    { title: "Connect Google Search Console", status: "todo", priority: "high", due: 2 },
+    { title: "Connect Google Search Console", status: "assigned", priority: "high", due: 2 },
     {
       title: "Audit title tags on service pages",
       status: "in_progress",
       priority: "medium",
       due: 5,
     },
-    { title: "Draft April blog post outline", status: "in_review", priority: "medium", due: -1 },
+    { title: "Draft April blog post outline", status: "ready_for_review", priority: "medium", due: -1 },
     { title: "Fix duplicate meta descriptions", status: "backlog", priority: "low", due: null },
-    { title: "Send fortnightly report to client", status: "done", priority: "medium", due: -3 },
+    { title: "Send fortnightly report to client", status: "completed", priority: "medium", due: -3 },
   ] as const;
   for (const t of sampleTasks) {
     const existing = await prisma.task.findFirst({ where: { clientId, title: t.title } });
@@ -233,7 +233,7 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
         assigneeId: adminId,
         reporterId: adminId,
         dueAt: t.due === null ? null : new Date(Date.now() + t.due * day),
-        completedAt: t.status === "done" ? new Date() : null,
+        completedAt: t.status === "completed" ? new Date() : null,
         isSample: true,
       },
     });

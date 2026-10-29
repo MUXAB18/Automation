@@ -1,12 +1,17 @@
 // ---- Tasks, collaboration and time tracking -------------------------------------------------
 
+// Backlog -> Assigned -> In progress -> Ready for review -> Approved -> Completed, plus
+// Changes requested (back from review), Blocked and Cancelled. The allowed moves are in
+// src/services/task-rules.ts.
 enum TaskStatus {
   backlog
-  todo
+  assigned
   in_progress
-  in_review
+  ready_for_review
+  changes_requested
   blocked
-  done
+  approved
+  completed
   cancelled
 }
 
@@ -45,55 +50,70 @@ enum TaskEventType {
   dependency_added
   dependency_removed
   archived
+  reassigned
+  evidence_submitted
+  time_logged
+  linked
 }
 
 model Task {
-  id              String       @id @default(uuid())
-  agencyId        String       @map("agency_id")
-  clientId        String       @map("client_id")
-  projectId       String?      @map("project_id")
-  parentTaskId    String?      @map("parent_task_id")
-  title           String
-  description     String?
-  type            TaskType     @default(general)
-  source          TaskSource   @default(manual)
-  status          TaskStatus   @default(todo)
-  priority        TaskPriority @default(medium)
-  assigneeId      String?      @map("assignee_id")
-  reporterId      String?      @map("reporter_id")
-  labels          String[]
-  estimateMinutes Int?         @map("estimate_minutes")
+  id                 String       @id @default(uuid())
+  agencyId           String       @map("agency_id")
+  clientId           String       @map("client_id")
+  projectId          String?      @map("project_id")
+  parentTaskId       String?      @map("parent_task_id")
+  title              String
+  description        String?
+  // What "done" means, one line per criterion; the reviewer checks the work against it.
+  acceptanceCriteria String?      @map("acceptance_criteria")
+  type               TaskType     @default(general)
+  source             TaskSource   @default(manual)
+  status             TaskStatus   @default(backlog)
+  priority           TaskPriority @default(medium)
+  assigneeId         String?      @map("assignee_id")
+  reporterId         String?      @map("reporter_id")
+  labels             String[]
+  estimateMinutes    Int?         @map("estimate_minutes")
   // Manual ordering inside a board column.
-  sortOrder       Decimal      @default(0) @map("sort_order") @db.Decimal(20, 10)
-  dueAt           DateTime?    @map("due_at") @db.Timestamptz(3)
-  startedAt       DateTime?    @map("started_at") @db.Timestamptz(3)
-  completedAt     DateTime?    @map("completed_at") @db.Timestamptz(3)
-  archivedAt      DateTime?    @map("archived_at") @db.Timestamptz(3)
+  sortOrder          Decimal      @default(0) @map("sort_order") @db.Decimal(20, 10)
+  // Proof of the finished work, submitted with "Ready for review".
+  evidenceNote       String?      @map("evidence_note")
+  evidenceLinks      String[]     @default([]) @map("evidence_links")
+  reviewRequestedAt  DateTime?    @map("review_requested_at") @db.Timestamptz(3)
+  // Optional link to the content this task is about (the SEO issue link lives on seo_issues.task_id).
+  contentItemId      String?      @map("content_item_id")
+  // End of the due day in the client's time zone.
+  dueAt              DateTime?    @map("due_at") @db.Timestamptz(3)
+  startedAt          DateTime?    @map("started_at") @db.Timestamptz(3)
+  completedAt        DateTime?    @map("completed_at") @db.Timestamptz(3)
+  archivedAt         DateTime?    @map("archived_at") @db.Timestamptz(3)
   // True for development seed rows, so the UI can tell them apart from live provider data.
-  isSample        Boolean      @default(false) @map("is_sample")
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  isSample           Boolean      @default(false) @map("is_sample")
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  client          Client           @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
-  project         Project?         @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Restrict)
-  parentTask      Task?            @relation("TaskSubtasks", fields: [parentTaskId, clientId], references: [id, clientId], onDelete: Restrict)
+  client       Client           @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  project      Project?         @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Restrict)
+  contentItem  ContentItem?     @relation(fields: [contentItemId, clientId], references: [id, clientId], onDelete: Restrict)
+  parentTask   Task?            @relation("TaskSubtasks", fields: [parentTaskId, clientId], references: [id, clientId], onDelete: Restrict)
   // Eligibility (assignee has access to the client) is enforced by a trigger, see migration.
-  assignee        User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  reporter        User?            @relation("TaskReporter", fields: [reporterId], references: [id], onDelete: SetNull)
-  seoIssues       SeoIssue[]
-  taskSubtaskses  Task[]           @relation("TaskSubtasks")
-  taskBlockedBies TaskDependency[] @relation("TaskBlockedBy")
-  taskBlockses    TaskDependency[] @relation("TaskBlocks")
-  taskComments    TaskComment[]
-  taskAttachments TaskAttachment[]
-  taskEvents      TaskEvent[]
-  timeEntries     TimeEntry[]
+  assignee     User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter     User?            @relation("TaskReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  seoIssues    SeoIssue[]
+  subtasks     Task[]           @relation("TaskSubtasks")
+  dependencies TaskDependency[] @relation("TaskBlockedBy")
+  dependents   TaskDependency[] @relation("TaskBlocks")
+  comments     TaskComment[]
+  attachments  TaskAttachment[]
+  events       TaskEvent[]
+  timeEntries  TimeEntry[]
 
   @@unique([id, clientId])
   @@index([clientId, status, priority])
   @@index([clientId, assigneeId, status])
   @@index([clientId, projectId])
   @@index([clientId, dueAt])
+  @@index([contentItemId])
   @@index([parentTaskId])
   @@map("tasks")
 }

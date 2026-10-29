@@ -21,10 +21,10 @@ import {
   listNotifications,
   listProjectOptions,
   listReports,
-  listTasks,
   markNotificationsRead,
 } from "./workspace";
 import { searchProjects } from "./projects";
+import { searchTasks } from "./task-queries";
 
 beforeEach(resetDb);
 
@@ -63,28 +63,28 @@ const titles = (rows: { title: string }[]) => rows.map((r) => r.title).sort();
 describe("tenant isolation", () => {
   it("returns only the actor's agency, even when another tenant's client or project id is supplied", async () => {
     const { staff, b, projB } = await world();
-    expect(titles((await listTasks(staff)).rows)).toEqual([
+    expect(titles((await searchTasks(staff)).rows)).toEqual([
       "A1 task in SEO",
       "A1 task in Social",
       "A1 task with no project",
       "A2 task",
     ]);
-    expect((await listTasks(staff, { clientId: b.id })).rows).toEqual([]);
-    expect((await listTasks(staff, { projectId: projB.id })).rows).toEqual([]);
+    expect((await searchTasks(staff, { clientId: b.id })).rows).toEqual([]);
+    expect((await searchTasks(staff, { projectId: projB.id })).rows).toEqual([]);
     expect((await searchProjects(staff, { clientId: b.id })).rows).toEqual([]);
     expect(await listProjectOptions(staff, b.id)).toEqual([]);
   });
 
   it("lets platform admins see every agency", async () => {
     const { admin } = await world();
-    expect((await listTasks(admin)).total).toBe(5);
+    expect((await searchTasks(admin)).total).toBe(5);
   });
 
   it("limits a per-client role to that client", async () => {
     const { a1 } = await world();
     const specialist = await makeUser();
     await addMember(specialist, a1.id, "seo_specialist");
-    const tasks = await listTasks(specialist);
+    const tasks = await searchTasks(specialist);
     expect(titles(tasks.rows)).toEqual([
       "A1 task in SEO",
       "A1 task in Social",
@@ -94,7 +94,7 @@ describe("tenant isolation", () => {
 
   it("filters by selected project", async () => {
     const { staff, projA1 } = await world();
-    expect(titles((await listTasks(staff, { projectId: projA1.id })).rows)).toEqual([
+    expect(titles((await searchTasks(staff, { projectId: projA1.id })).rows)).toEqual([
       "A1 task in SEO",
     ]);
   });
@@ -105,7 +105,7 @@ describe("section permissions", () => {
     const { a1 } = await world();
     const writer = await makeUser();
     await addMember(writer, a1.id, "content_writer"); // task.view + content.view, no analytics/report/integration/automation
-    expect((await listTasks(writer)).total).toBe(3);
+    expect((await searchTasks(writer)).total).toBe(3);
     expect((await getAnalytics(writer)).sources).toEqual([]);
     expect((await listReports(writer)).rows).toEqual([]);
     expect((await listAutomationRules(writer)).rows).toEqual([]);
@@ -138,7 +138,7 @@ describe("client-role users see only their projects", () => {
         userId: clientUser.userId,
       },
     });
-    expect(titles((await listTasks(clientUser)).rows)).toEqual([]); // client role has no task.view
+    expect(titles((await searchTasks(clientUser)).rows)).toEqual([]); // client role has no task.view
     const projects = await searchProjects(clientUser);
     expect(projects.rows.map((p) => p.name)).toEqual(["A1 SEO"]);
     expect((await searchProjects(clientUser, { clientId: a1.id })).total).toBe(1);
@@ -183,22 +183,24 @@ describe("filters and paging", () => {
   it("searches, filters and pages", async () => {
     const { staff, a1, t } = await world();
     for (let i = 0; i < 25; i++)
-      await prisma().task.create({ data: { ...t(a1), title: `Bulk ${i}`, status: "done" } });
-    const first = await listTasks(staff, { q: "bulk" });
+      await prisma().task.create({
+        data: { ...t(a1), title: `Bulk ${i}`, status: "completed", completedAt: new Date() },
+      });
+    const first = await searchTasks(staff, { q: "bulk" });
     expect(first.total).toBe(25);
     expect(first.rows).toHaveLength(PAGE_SIZE);
     expect(first.pageCount).toBe(2);
-    expect((await listTasks(staff, { q: "bulk", page: 2 })).rows).toHaveLength(5);
-    expect((await listTasks(staff, { status: "done" })).total).toBe(25);
-    expect((await listTasks(staff, { open: true })).total).toBe(4);
-    expect((await listTasks(staff, { q: "%'; drop table tasks;--" })).total).toBe(0);
-    expect((await listTasks(staff, { page: -5 })).page).toBe(1);
+    expect((await searchTasks(staff, { q: "bulk", page: 2 })).rows).toHaveLength(5);
+    expect((await searchTasks(staff, { status: "completed" })).total).toBe(25);
+    expect((await searchTasks(staff, { open: true })).total).toBe(4);
+    expect((await searchTasks(staff, { q: "%'; drop table tasks;--" })).total).toBe(0);
+    expect((await searchTasks(staff, { page: -5 })).page).toBe(1);
   });
 
   it("filters to the actor's own tasks", async () => {
     const { staff, a1, t } = await world();
     await prisma().task.create({ data: { ...t(a1), title: "Mine", assigneeId: staff.userId } });
-    expect(titles((await listTasks(staff, { mine: true })).rows)).toEqual(["Mine"]);
+    expect(titles((await searchTasks(staff, { assignee: "me" })).rows)).toEqual(["Mine"]);
   });
 });
 
@@ -282,7 +284,9 @@ describe("overview", () => {
         isSample: true,
       },
     });
-    await prisma().task.create({ data: { ...t(a1), title: "Done", status: "done" } });
+    await prisma().task.create({
+      data: { ...t(a1), title: "Done", status: "completed", completedAt: new Date() },
+    });
     const o = await getOverview(staff);
     expect(o.tasks).toMatchObject({ open: 5, overdue: 1, mineCount: 1 });
     expect(o.sample.tasks).toBe(1);
