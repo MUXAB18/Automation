@@ -13,8 +13,10 @@ export {
   type Scope,
   type ScopedDb,
 } from "./scope";
+export * from "./services/brand";
 export * from "./services/clients";
 export * from "./services/job-runs";
+export * from "./services/projects";
 export * from "./services/team";
 export * from "./services/workspace";
 export {

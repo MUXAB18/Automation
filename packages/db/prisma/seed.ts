@@ -114,6 +114,18 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
   const { agencyId, clientId, websiteId, adminId } = ids;
   const tenant = { agencyId, clientId };
 
+  // Give the sample client a realistic profile, but only fill gaps: never overwrite what someone entered.
+  await prisma.client.updateMany({
+    where: { id: clientId, industry: null },
+    data: {
+      industry: "Freight and logistics",
+      goals: "Grow qualified quote requests from search and keep a steady social presence.",
+      targetLocations: ["Ottawa, ON", "Toronto, ON", "Canada"],
+      timezone: "America/Toronto",
+      accountOwnerId: adminId,
+    },
+  });
+
   const project = await prisma.project.upsert({
     where: { clientId_slug: { clientId, slug: "seo" } },
     update: { isSample: true },
@@ -122,8 +134,39 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
       name: "SEO programme",
       slug: "seo",
       kind: "seo",
+      goals: "Rank on page one for core freight and customs terms.",
       createdById: adminId,
       isSample: true,
+    },
+  });
+  // Project membership requires a seat on the client team (agency-wide staff get a role-less one).
+  await prisma.clientMembership.upsert({
+    where: { userId_clientId: { userId: adminId, clientId } },
+    update: {},
+    create: { ...tenant, userId: adminId },
+  });
+  await prisma.projectMembership.createMany({
+    data: [{ ...tenant, projectId: project.id, userId: adminId, role: "lead" }],
+    skipDuplicates: true,
+  });
+  await prisma.project.upsert({
+    where: { clientId_slug: { clientId, slug: "social-media" } },
+    update: { isSample: true },
+    create: {
+      ...tenant,
+      name: "Social media",
+      slug: "social-media",
+      kind: "social",
+      goals: "Post three times a week and grow the LinkedIn audience.",
+      createdById: adminId,
+      isSample: true,
+      settings: {
+        social: {
+          channels: ["linkedin", "facebook"],
+          postsPerWeek: 3,
+          requirements: "Every post needs approval before publishing.",
+        },
+      },
     },
   });
   const seoProject = await prisma.seoProject.upsert({

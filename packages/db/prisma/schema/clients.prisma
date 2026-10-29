@@ -42,6 +42,13 @@ model Client {
   locale             String       @default("en-CA")
   reportEmail        String?      @map("report_email")
   reportIntervalDays Int          @default(15) @map("report_interval_days")
+  industry           String?
+  // Free text: what the client wants to achieve (shown to the whole team).
+  goals              String?
+  // Places the client wants to be found in, e.g. "Ottawa, ON", "Canada".
+  targetLocations    String[]     @default([]) @map("target_locations")
+  // The agency person responsible for this client. Must have access to the client (trigger).
+  accountOwnerId     String?      @map("account_owner_id")
   // Per-client behavior lives in data: brand voice, schedule, etc.
   settings           Json         @default("{}") @db.JsonB
   createdAt          DateTime     @default(now()) @map("created_at")
@@ -50,6 +57,7 @@ model Client {
   archivedAt         DateTime?    @map("archived_at") @db.Timestamptz(3)
 
   agency               Agency                @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  accountOwner         User?                 @relation("ClientAccountOwner", fields: [accountOwnerId], references: [id], onDelete: SetNull)
   analyticsSources     AnalyticsSource[]
   metricSnapshots      MetricSnapshot[]
   automationRules      AutomationRule[]
@@ -103,6 +111,7 @@ model Client {
   // Target of the (client_id, agency_id) composite FK present on every client-owned table.
   @@unique([id, agencyId])
   @@index([agencyId, status])
+  @@index([accountOwnerId])
   @@map("clients")
 }
 
@@ -138,6 +147,9 @@ model Project {
   kind        ProjectKind   @default(general)
   status      ProjectStatus @default(active)
   description String?
+  goals       String?
+  // Per-project requirements, e.g. { social: { channels, postsPerWeek, requirements } }. Validated in code.
+  settings    Json          @default("{}") @db.JsonB
   startsOn    DateTime?     @map("starts_on") @db.Date
   endsOn      DateTime?     @map("ends_on") @db.Date
   createdById String?       @map("created_by_id")

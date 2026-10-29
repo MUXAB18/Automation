@@ -1,6 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { requireAgencyPermission, requirePermission, type Actor } from "../access";
+import {
+  getClientContext,
+  requireAgencyPermission,
+  requirePermission,
+  type Actor,
+} from "../access";
 import { recordAudit } from "../audit";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../errors";
 import type { Prisma } from "../generated/client";
@@ -497,6 +502,11 @@ export async function removeAgencyMember(actor: Actor, agencyId: string, userId:
       where: { agencyId, assignedToId: userId },
       data: { assignedToId: null },
     });
+    // They can no longer own clients of this agency.
+    await tx.client.updateMany({
+      where: { agencyId, accountOwnerId: userId },
+      data: { accountOwnerId: null },
+    });
     // Cascades to client memberships, their roles and project memberships.
     await tx.agencyMembership.delete({ where: { id: seat.id } });
     await recordAudit(tx, {
@@ -565,6 +575,17 @@ export async function removeClientMember(actor: Actor, clientId: string, userId:
       data: { assignedToId: null },
     });
     await tx.clientMembership.delete({ where: { id: seat.id } });
+    // The account owner must keep access: unless agency-wide access still covers them, clear the owner.
+    const agencySeat = await tx.agencyMembership.findUnique({
+      where: { agencyId_userId: { agencyId: ctx.agencyId, userId } },
+      select: { allClientsAccess: true },
+    });
+    if (!agencySeat?.allClientsAccess) {
+      await tx.client.updateMany({
+        where: { id: clientId, accountOwnerId: userId },
+        data: { accountOwnerId: null },
+      });
+    }
     await recordAudit(tx, {
       actorUserId: actor.userId,
       agencyId: ctx.agencyId,
@@ -601,6 +622,136 @@ export async function setUserActive(actor: Actor, userId: string, active: boolea
       action: active ? "user.reactivated" : "user.deactivated",
       entityType: "user",
       entityId: userId,
+    });
+  });
+}
+
+// ---- Client team ---------------------------------------------------------------------------------------
+
+/**
+ * Who works on one client: people assigned to it (with their roles there), agency staff who reach it
+ * through all-clients access, and (for people who can manage access) agency members who could be added.
+ */
+export async function listClientTeam(actor: Actor, clientId: string) {
+  const ctx = await getClientContext(actor, clientId);
+  const db = prismaClient();
+  const canManage = ctx.access.permissions.has("member.manage");
+  const [client, seats, wide, candidates] = await Promise.all([
+    db.client.findUnique({ where: { id: clientId }, select: { accountOwnerId: true } }),
+    db.clientMembership.findMany({
+      where: { clientId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        userId: true,
+        status: true,
+        roles: { select: { role: { select: { key: true, name: true } } } },
+        agencyMembership: {
+          select: { user: { select: { name: true, email: true, deactivatedAt: true } } },
+        },
+      },
+    }),
+    db.agencyMembership.findMany({
+      where: {
+        agencyId: ctx.agencyId,
+        status: "active",
+        allClientsAccess: true,
+        user: { deactivatedAt: null },
+      },
+      select: {
+        userId: true,
+        user: { select: { name: true, email: true } },
+        roles: { select: { role: { select: { key: true, name: true } } } },
+      },
+    }),
+    canManage
+      ? db.agencyMembership.findMany({
+          where: {
+            agencyId: ctx.agencyId,
+            status: "active",
+            user: { deactivatedAt: null },
+            clientMemberships: { none: { clientId } },
+          },
+          select: { userId: true, user: { select: { name: true, email: true } } },
+          orderBy: { user: { name: "asc" } },
+        })
+      : Promise.resolve([]),
+  ]);
+  return {
+    ownerId: client?.accountOwnerId ?? null,
+    canManage,
+    members: seats.map((s) => ({
+      userId: s.userId,
+      status: s.status,
+      name: s.agencyMembership.user.name,
+      email: s.agencyMembership.user.email,
+      deactivated: s.agencyMembership.user.deactivatedAt !== null,
+      roles: s.roles.map((r) => r.role),
+    })),
+    agencyWide: wide.map((w) => ({
+      userId: w.userId,
+      name: w.user.name,
+      email: w.user.email,
+      roles: w.roles.map((r) => r.role),
+    })),
+    candidates: candidates.map((c) => ({
+      userId: c.userId,
+      name: c.user.name,
+      email: c.user.email,
+    })),
+    roles: canManage
+      ? await db.role.findMany({
+          where: { agencyId: ctx.agencyId },
+          orderBy: { name: "asc" },
+          select: { key: true, name: true, scope: true, description: true },
+        })
+      : [],
+  };
+}
+
+/** Give an existing agency member access to one client, with one or more roles. */
+export async function addClientMember(
+  actor: Actor,
+  input: { clientId: string; userId: string; roleKeys: RoleKey[] },
+) {
+  const data = parseInput(z.object({ roleKeys: roleKeysSchema }), input);
+  const ctx = await requirePermission(actor, input.clientId, "member.manage");
+  const db = prismaClient();
+  await db.$transaction(async (tx) => {
+    const seat = await tx.agencyMembership.findUnique({
+      where: { agencyId_userId: { agencyId: ctx.agencyId, userId: input.userId } },
+      select: { status: true, user: { select: { deactivatedAt: true } } },
+    });
+    // Only people already on the agency team can be added; anyone else must be invited first.
+    if (seat?.status !== "active" || seat.user.deactivatedAt)
+      throw new NotFoundError("Team member not found");
+    if (
+      await tx.clientMembership.findUnique({
+        where: { userId_clientId: { userId: input.userId, clientId: input.clientId } },
+        select: { id: true },
+      })
+    ) {
+      throw new ConflictError("This person already works on this client");
+    }
+    const roles = await loadRoles(tx, ctx.agencyId, data.roleKeys);
+    assertCanGrant(ctx.access, roles);
+    const created = await tx.clientMembership.create({
+      data: { agencyId: ctx.agencyId, clientId: input.clientId, userId: input.userId },
+    });
+    await tx.clientMembershipRole.createMany({
+      data: roles.map((r) => ({
+        agencyId: ctx.agencyId,
+        clientMembershipId: created.id,
+        roleId: r.id,
+      })),
+    });
+    await recordAudit(tx, {
+      actorUserId: actor.userId,
+      agencyId: ctx.agencyId,
+      clientId: input.clientId,
+      action: "membership.added",
+      entityType: "client_membership",
+      entityId: created.id,
+      after: { userId: input.userId, roles: data.roleKeys },
     });
   });
 }

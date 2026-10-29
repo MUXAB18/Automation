@@ -20,11 +20,11 @@ import {
   listContent,
   listNotifications,
   listProjectOptions,
-  listProjects,
   listReports,
   listTasks,
   markNotificationsRead,
 } from "./workspace";
+import { searchProjects } from "./projects";
 
 beforeEach(resetDb);
 
@@ -71,7 +71,7 @@ describe("tenant isolation", () => {
     ]);
     expect((await listTasks(staff, { clientId: b.id })).rows).toEqual([]);
     expect((await listTasks(staff, { projectId: projB.id })).rows).toEqual([]);
-    expect((await listProjects(staff, { clientId: b.id })).rows).toEqual([]);
+    expect((await searchProjects(staff, { clientId: b.id })).rows).toEqual([]);
     expect(await listProjectOptions(staff, b.id)).toEqual([]);
   });
 
@@ -139,9 +139,9 @@ describe("client-role users see only their projects", () => {
       },
     });
     expect(titles((await listTasks(clientUser)).rows)).toEqual([]); // client role has no task.view
-    const projects = await listProjects(clientUser);
+    const projects = await searchProjects(clientUser);
     expect(projects.rows.map((p) => p.name)).toEqual(["A1 SEO"]);
-    expect((await listProjects(clientUser, { clientId: a1.id })).total).toBe(1);
+    expect((await searchProjects(clientUser, { clientId: a1.id })).total).toBe(1);
     expect(await listProjectOptions(clientUser, a1.id)).toEqual([
       { id: projA1.id, name: "A1 SEO", isSample: false },
     ]);

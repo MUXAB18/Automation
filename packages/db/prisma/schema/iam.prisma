@@ -61,6 +61,7 @@ model User {
   reportApprovers         Report[]             @relation("ReportApprover")
   auditTriggers           SiteAudit[]          @relation("AuditTrigger")
   issueChangers           SeoIssueHistory[]    @relation("IssueChanger")
+  accountOwnerOf          Client[]             @relation("ClientAccountOwner")
   invitationsSent         Invitation[]         @relation("InvitationSender")
   invitationsAccepted     Invitation[]         @relation("InvitationAcceptor")
   taskAssignees           Task[]               @relation("TaskAssignee")

@@ -29,8 +29,8 @@ Visibility is computed on the server from the user's real permissions (`lib/sect
 | Section | Path | Needs | Status | What the page does today |
 | --- | --- | --- | --- | --- |
 | Overview | `/` | everyone | Live | Counts, needs-attention list, my tasks, coming up, recent activity from the database |
-| Clients | `/clients` | `client.view` | Live | List, create, edit, pause/archive, websites, activity |
-| Projects | `/projects` | `client.view` | Preview | Read-only list; client users see only projects they belong to |
+| Clients | `/clients` | `client.view` | Live | Search, create, profile, team, brand guidelines, archive; see [client-project-management.md](client-project-management.md) |
+| Projects | `/projects` | `client.view` | Live | Create, edit, search, archive; see [client-project-management.md](client-project-management.md) |
 | Tasks | `/tasks` | `task.view` | Preview | Read-only list with search, status/priority filters, "assigned to me" |
 | SEO | `/seo` | `seo.view` | Preview | Keywords with latest rank, open issues, audits; read-only |
 | Content Calendar | `/content` | `content.view` | Preview | Read-only list in date order with status filter |

@@ -58,7 +58,7 @@ export const SECTIONS: readonly Section[] = [
     href: "/projects",
     group: "Workspace",
     permission: "client.view",
-    status: "preview",
+    status: "live",
     description: "Programmes of work for each client.",
   },
   {

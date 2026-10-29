@@ -9,7 +9,7 @@ import {
   Search,
   Users,
 } from "lucide-react";
-import { canCreateClient, getOverview } from "@automation/db";
+import { canCreateClients, getOverview } from "@automation/db";
 import { formatDate } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
@@ -39,6 +39,7 @@ export default async function OverviewPage() {
   const totalClients = data.clients.active + data.clients.paused + data.clients.archived;
 
   if (totalClients === 0) {
+    const canCreate = await canCreateClients(actor);
     return (
       <>
         <PageHeader title="Overview" description="Your workspace at a glance." />
@@ -46,13 +47,11 @@ export default async function OverviewPage() {
           icon={Users}
           title="No clients yet"
           description={
-            canCreateClient(actor)
+            canCreate
               ? "Add your first client to start planning work."
               : "You haven't been given access to any client. Ask your agency admin to add you."
           }
-          action={
-            canCreateClient(actor) ? { label: "Add a client", href: "/clients/new" } : undefined
-          }
+          action={canCreate ? { label: "Add a client", href: "/clients/new" } : undefined}
         />
       </>
     );

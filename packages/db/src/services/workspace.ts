@@ -2,6 +2,9 @@ import { forClients, getAccessMap, clientIdsWith, type Actor } from "../access";
 import type { Prisma } from "../generated/client";
 import type { Permission } from "../permissions";
 import { getUnscopedPrisma } from "../unsafe";
+import { PAGE_SIZE, clampPage, paged } from "./paging";
+
+export { PAGE_SIZE, type Paged } from "./paging";
 
 /**
  * Read models for the dashboard sections (Projects, Tasks, SEO, Content, ...). Every function:
@@ -12,22 +15,10 @@ import { getUnscopedPrisma } from "../unsafe";
  * Selecting someone else's client or project id therefore returns nothing, never their data.
  */
 
-export const PAGE_SIZE = 20;
-
 export type Selection = { clientId?: string; projectId?: string };
 export type Page = { page?: number };
 
-export type Paged<T> = { rows: T[]; total: number; page: number; pageCount: number };
-
-const clampPage = (page: number | undefined) => Math.max(1, Math.floor(page ?? 1) || 1);
-const paged = <T>(rows: T[], total: number, page: number): Paged<T> => ({
-  rows,
-  total,
-  page,
-  pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)),
-});
-
-type Resolved = {
+export type Resolved = {
   clientIds: string[];
   /** Per-client project allow-list for client-only users; clients absent here are unrestricted. */
   projectLimits: Map<string, string[]>;
@@ -35,7 +26,7 @@ type Resolved = {
   restrictedClients: string[];
 };
 
-async function resolve(
+export async function resolve(
   actor: Actor,
   permission: Permission,
   selection: Selection = {},
@@ -81,7 +72,7 @@ async function resolve(
 }
 
 /** `where` fragment limiting rows to allowed clients (and, for client-only users, allowed projects). */
-function tenantWhere(r: Resolved, projectField: "projectId" | "id" | null) {
+export function tenantWhere(r: Resolved, projectField: "projectId" | "id" | null) {
   if (r.clientIds.length === 0) return { clientId: { in: [] as string[] } };
   const unrestricted = r.clientIds.filter((id) => !r.projectLimits.has(id));
   const or: Record<string, unknown>[] = [];
@@ -100,36 +91,7 @@ function tenantWhere(r: Resolved, projectField: "projectId" | "id" | null) {
 const contains = (q: string | undefined) =>
   q?.trim() ? { contains: q.trim(), mode: "insensitive" as const } : undefined;
 
-// ---- Projects ----------------------------------------------------------------------------------
-
-export type ProjectFilters = Selection & Page & { q?: string; status?: string; kind?: string };
-
-export async function listProjects(actor: Actor, f: ProjectFilters = {}) {
-  const r = await resolve(actor, "client.view", { clientId: f.clientId });
-  const db = forClients(r.clientIds);
-  const page = clampPage(f.page);
-  const where: Prisma.ProjectWhereInput = {
-    ...(tenantWhere(r, "id") as Prisma.ProjectWhereInput),
-    archivedAt: null,
-    ...(f.status ? { status: f.status as never } : {}),
-    ...(f.kind ? { kind: f.kind as never } : {}),
-    ...(contains(f.q) ? { name: contains(f.q) } : {}),
-  };
-  const [rows, total] = await Promise.all([
-    db.project.findMany({
-      where,
-      orderBy: [{ client: { name: "asc" } }, { name: "asc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        client: { select: { id: true, name: true } },
-        _count: { select: { projectMemberships: true } },
-      },
-    }),
-    db.project.count({ where }),
-  ]);
-  return paged(rows, total, page);
-}
+// ---- Projects (selector; the full list is searchProjects in projects.ts) ----------------------------------
 
 /** Projects of one client, for the project selector (only the ones this actor may open). */
 export async function listProjectOptions(actor: Actor, clientId: string | undefined) {
