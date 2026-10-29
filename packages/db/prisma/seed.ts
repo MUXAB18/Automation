@@ -15,23 +15,28 @@ async function main() {
     let admin = await prisma.user.findUnique({ where: { email } });
     if (!admin) {
       admin = await prisma.user.create({
-        data: {
-          email,
-          name: env.SEED_ADMIN_NAME,
-          emailVerified: true,
-          isAdmin: true,
-          accounts: {
-            create: {
-              accountId: email,
-              providerId: "credential",
-              password: await hashPassword(env.SEED_ADMIN_PASSWORD),
-            },
-          },
-        },
+        data: { email, name: env.SEED_ADMIN_NAME, emailVerified: true, isAdmin: true },
       });
       console.log(`Created admin user ${email}`);
     } else {
-      console.log(`Admin user ${email} already exists (password left unchanged)`);
+      console.log(`Admin user ${email} already exists`);
+    }
+
+    // Better Auth expects a credential account whose account_id is the user's id.
+    const credential = await prisma.account.findFirst({
+      where: { userId: admin.id, providerId: "credential" },
+    });
+    if (!credential) {
+      await prisma.account.create({
+        data: {
+          userId: admin.id,
+          accountId: admin.id,
+          providerId: "credential",
+          password: await hashPassword(env.SEED_ADMIN_PASSWORD),
+        },
+      });
+    } else if (credential.accountId !== admin.id) {
+      await prisma.account.update({ where: { id: credential.id }, data: { accountId: admin.id } });
     }
 
     const customer = await prisma.customer.upsert({
