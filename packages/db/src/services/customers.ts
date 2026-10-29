@@ -225,3 +225,12 @@ export async function removeWebsite(actor: Actor, customerId: string, websiteId:
     });
   });
 }
+
+export async function listAuditLog(actor: Actor, customerId: string, limit = 10) {
+  const ctx = await getCustomerContext(actor, customerId);
+  return ctx.db.auditLog.findMany({
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: { actor: { select: { name: true, email: true } } },
+  });
+}
