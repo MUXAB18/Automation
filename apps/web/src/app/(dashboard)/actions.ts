@@ -11,7 +11,9 @@ export async function setActiveCustomerAction(formData: FormData) {
   const { options } = await getActiveCustomer(actor);
 
   // Only accept values the actor may actually use.
-  const allowed = typeof value === "string" && (options.some((o) => o.id === value) || (actor.isAdmin && value === ALL_CUSTOMERS));
+  const allowed =
+    typeof value === "string" &&
+    (options.some((o) => o.id === value) || (actor.isAdmin && value === ALL_CUSTOMERS));
   if (!allowed) return;
 
   (await cookies()).set(ACTIVE_CUSTOMER_COOKIE, value, {

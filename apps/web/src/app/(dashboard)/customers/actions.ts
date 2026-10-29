@@ -18,7 +18,10 @@ const text = (formData: FormData, key: string) => {
   return typeof value === "string" ? value : undefined;
 };
 
-export async function createCustomerAction(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function createCustomerAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const actor = await requireActor();
   let id: string;
   try {

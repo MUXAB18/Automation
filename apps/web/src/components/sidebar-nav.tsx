@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, LineChart, FileText, Share2, FileBarChart, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  LineChart,
+  FileText,
+  Share2,
+  FileBarChart,
+  Settings,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -15,26 +23,39 @@ const ITEMS = [
   { label: "Settings", icon: Settings },
 ] as const;
 
-export function SidebarNav({ orientation = "vertical" }: { orientation?: "vertical" | "horizontal" }) {
+export function SidebarNav({
+  orientation = "vertical",
+}: {
+  orientation?: "vertical" | "horizontal";
+}) {
   const pathname = usePathname();
   return (
     <nav
       aria-label="Main"
-      className={cn("flex gap-1", orientation === "vertical" ? "flex-col" : "overflow-x-auto px-2 py-2")}
+      className={cn(
+        "flex gap-1",
+        orientation === "vertical" ? "flex-col" : "overflow-x-auto px-3 py-2",
+      )}
     >
       {ITEMS.map((item) => {
         const Icon = item.icon;
-        const base = "flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-sm";
+        const base =
+          "flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors";
         if (!("href" in item)) {
           return (
             <span
               key={item.label}
               aria-disabled="true"
               title="Coming soon"
-              className={cn(base, "cursor-not-allowed text-muted-foreground/60")}
+              className={cn(base, "cursor-not-allowed text-muted-foreground/50")}
             >
-              <Icon className="size-4" aria-hidden />
+              <Icon className="size-[18px]" aria-hidden />
               {item.label}
+              {orientation === "vertical" ? (
+                <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                  Soon
+                </span>
+              ) : null}
             </span>
           );
         }
@@ -44,9 +65,14 @@ export function SidebarNav({ orientation = "vertical" }: { orientation?: "vertic
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={cn(base, active ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn(
+              base,
+              active
+                ? "bg-primary-soft font-medium text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
           >
-            <Icon className="size-4" aria-hidden />
+            <Icon className="size-[18px]" aria-hidden />
             {item.label}
           </Link>
         );

@@ -16,7 +16,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
   const { q, status } = await searchParams;
   const parsedStatus = Object.values(CustomerStatus).find((s) => s === status);
   const { activeId, options } = await getActiveCustomer(actor);
-  const customers = await listCustomers(actor, { search: q, status: parsedStatus, customerId: activeId });
+  const customers = await listCustomers(actor, {
+    search: q,
+    status: parsedStatus,
+    customerId: activeId,
+  });
 
   return (
     <>
@@ -34,13 +38,20 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
 
       {activeId ? (
         <p className="mb-4 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-          Showing {options.find((o) => o.id === activeId)?.name ?? "the selected customer"} only. Use the
-          customer switcher in the header to change this{actor.isAdmin ? ' or choose "All customers"' : ""}.
+          Showing {options.find((o) => o.id === activeId)?.name ?? "the selected customer"} only.
+          Use the customer switcher in the header to change this
+          {actor.isAdmin ? ' or choose "All customers"' : ""}.
         </p>
       ) : null}
 
       <form className="mb-4 flex flex-wrap gap-2" role="search">
-        <Input name="q" defaultValue={q} placeholder="Search name, slug or website" aria-label="Search customers" className="max-w-xs" />
+        <Input
+          name="q"
+          defaultValue={q}
+          placeholder="Search name, slug or website"
+          aria-label="Search customers"
+          className="max-w-xs"
+        />
         <select
           name="status"
           defaultValue={parsedStatus ?? ""}
@@ -86,8 +97,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
                   <td className="px-4 py-2.5">
                     <StatusBadge status={c.status} />
                   </td>
-                  <td className="px-4 py-2.5">{c.websites.find((w) => w.isPrimary)?.domain ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">every {c.reportIntervalDays} days</td>
+                  <td className="px-4 py-2.5">
+                    {c.websites.find((w) => w.isPrimary)?.domain ?? "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    every {c.reportIntervalDays} days
+                  </td>
                 </tr>
               ))}
             </tbody>

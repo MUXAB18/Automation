@@ -13,6 +13,11 @@
   --success: oklch(0.55 0.15 150);
   --warning: oklch(0.68 0.15 75);
   --ring: oklch(0.55 0.17 262);
+  --primary-soft: oklch(0.96 0.025 262);
+  --sidebar: oklch(0.99 0.002 250);
+  --brand-from: oklch(0.55 0.19 275);
+  --brand-to: oklch(0.5 0.17 235);
+  --shadow-card-value: 0 1px 2px oklch(0.2 0.02 255 / 0.05), 0 1px 3px oklch(0.2 0.02 255 / 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +34,11 @@
     --success: oklch(0.72 0.15 150);
     --warning: oklch(0.8 0.14 80);
     --ring: oklch(0.7 0.14 262);
+    --primary-soft: oklch(0.27 0.045 262);
+    --sidebar: oklch(0.19 0.016 255);
+    --brand-from: oklch(0.62 0.18 275);
+    --brand-to: oklch(0.58 0.15 235);
+    --shadow-card-value: 0 1px 2px oklch(0 0 0 / 0.3);
   }
 }
 
@@ -45,6 +55,11 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-ring: var(--ring);
+  --color-primary-soft: var(--primary-soft);
+  --color-sidebar: var(--sidebar);
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
+  --shadow-card: var(--shadow-card-value);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -52,4 +67,25 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--primary-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fade-up {
+    animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
 }

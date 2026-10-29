@@ -13,7 +13,11 @@ function RemoveButton({ websiteId, action }: { websiteId: string; action: Action
   return (
     <form action={formAction} className="flex items-center gap-2">
       <input type="hidden" name="websiteId" value={websiteId} />
-      {state.error ? <span role="alert" className="text-xs text-destructive">{state.error}</span> : null}
+      {state.error ? (
+        <span role="alert" className="text-xs text-destructive">
+          {state.error}
+        </span>
+      ) : null}
       <Button type="submit" variant="ghost" size="sm" disabled={pending}>
         Remove
       </Button>
@@ -61,11 +65,21 @@ export function WebsitesPanel({
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <input type="checkbox" name="isPrimary" /> Make primary
           </label>
-          {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
+          {state.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {state.error}
+            </p>
+          ) : null}
           {state.fieldErrors?.domain?.map((e) => (
-            <p key={e} className="text-sm text-destructive">{e}</p>
+            <p key={e} className="text-sm text-destructive">
+              {e}
+            </p>
           ))}
-          {state.ok ? <p role="status" className="text-sm text-success">{state.message}</p> : null}
+          {state.ok ? (
+            <p role="status" className="text-sm text-success">
+              {state.message}
+            </p>
+          ) : null}
         </form>
       ) : null}
     </div>

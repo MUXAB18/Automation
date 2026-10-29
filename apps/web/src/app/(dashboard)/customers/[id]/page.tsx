@@ -4,7 +4,12 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireActor } from "@/lib/session";
-import { addWebsiteAction, removeWebsiteAction, setStatusAction, updateCustomerAction } from "../actions";
+import {
+  addWebsiteAction,
+  removeWebsiteAction,
+  setStatusAction,
+  updateCustomerAction,
+} from "../actions";
 import { CustomerForm } from "../customer-form";
 import { StatusControls } from "../status-controls";
 import { WebsitesPanel } from "../websites-panel";
@@ -83,10 +88,18 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                     <li key={entry.id} className="flex items-baseline justify-between gap-3">
                       <span>
                         <code className="text-xs">{entry.action}</code>{" "}
-                        <span className="text-muted-foreground">by {entry.actor?.name ?? "system"}</span>
+                        <span className="text-muted-foreground">
+                          by {entry.actor?.name ?? "system"}
+                        </span>
                       </span>
-                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={entry.createdAt.toISOString()}>
-                        {entry.createdAt.toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                      <time
+                        className="shrink-0 text-xs text-muted-foreground"
+                        dateTime={entry.createdAt.toISOString()}
+                      >
+                        {entry.createdAt.toLocaleString("en-CA", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
                       </time>
                     </li>
                   ))}

@@ -6,7 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { FormState } from "@/lib/action-state";
 
-type Values = { name?: string; slug?: string; reportEmail?: string | null; reportIntervalDays?: number };
+type Values = {
+  name?: string;
+  slug?: string;
+  reportEmail?: string | null;
+  reportIntervalDays?: number;
+};
 
 function Field({
   label,
@@ -14,7 +19,12 @@ function Field({
   errors,
   hint,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; name: string; errors?: string[]; hint?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  name: string;
+  errors?: string[];
+  hint?: string;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={name}>{label}</Label>
@@ -44,7 +54,14 @@ export function CustomerForm({
   const fe = state.fieldErrors ?? {};
   return (
     <form action={formAction} className="flex max-w-xl flex-col gap-4">
-      <Field label="Name" name="name" defaultValue={values.name} required readOnly={readOnly} errors={fe.name} />
+      <Field
+        label="Name"
+        name="name"
+        defaultValue={values.name}
+        required
+        readOnly={readOnly}
+        errors={fe.name}
+      />
       <Field
         label="Slug"
         name="slug"
@@ -52,7 +69,11 @@ export function CustomerForm({
         required={mode === "edit"}
         readOnly={readOnly}
         errors={fe.slug}
-        hint={mode === "create" ? "Optional. Generated from the name if left empty." : "Lowercase letters, numbers and dashes."}
+        hint={
+          mode === "create"
+            ? "Optional. Generated from the name if left empty."
+            : "Lowercase letters, numbers and dashes."
+        }
       />
       {mode === "create" ? (
         <Field

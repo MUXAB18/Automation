@@ -18,7 +18,11 @@ export function toFormState(error: unknown): FormState {
   if (error instanceof ValidationError) {
     return { error: "Please fix the highlighted fields", fieldErrors: error.fieldErrors };
   }
-  if (error instanceof ConflictError || error instanceof ForbiddenError || error instanceof NotFoundError) {
+  if (
+    error instanceof ConflictError ||
+    error instanceof ForbiddenError ||
+    error instanceof NotFoundError
+  ) {
     return { error: error.message };
   }
   if (error instanceof ScopeViolationError) return { error: "That action is outside your access" };

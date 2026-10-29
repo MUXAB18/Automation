@@ -26,7 +26,7 @@ export function CustomerSwitcher({
         name="customerId"
         value={activeId ?? "all"}
         onChange={() => formRef.current?.requestSubmit()}
-        className="h-9 max-w-56 rounded-md border border-border bg-card px-3 text-sm"
+        className="h-9 max-w-56 cursor-pointer rounded-lg border border-border bg-card px-3 text-sm font-medium shadow-sm transition-shadow focus-visible:border-ring focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
       >
         {allowAll ? <option value="all">All customers</option> : null}
         {options.map((o) => (
