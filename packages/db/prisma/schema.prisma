@@ -33,6 +33,16 @@ enum JobRunStatus {
   failed
 }
 
+enum IntegrationProvider {
+  google
+}
+
+enum IntegrationStatus {
+  active
+  needs_reauth
+  disconnected
+}
+
 // ---- Users and auth (managed by Better Auth) -------------------------------
 
 model User {
@@ -50,6 +60,7 @@ model User {
   accounts    Account[]
   memberships Membership[]
   auditLogs   AuditLog[]
+  connections IntegrationConnection[]
 
   @@map("users")
 }
@@ -117,10 +128,11 @@ model Customer {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  websites    Website[]
-  memberships Membership[]
-  jobRuns     JobRun[]
-  auditLogs   AuditLog[]
+  websites     Website[]
+  memberships  Membership[]
+  jobRuns      JobRun[]
+  auditLogs    AuditLog[]
+  integrations IntegrationConnection[]
 
   @@index([status])
   @@map("customers")
@@ -195,4 +207,28 @@ model AuditLog {
   @@index([customerId, createdAt(sort: Desc)])
   @@index([actorUserId])
   @@map("audit_log")
+}
+
+// One connection per customer per provider. The refresh token is stored encrypted
+// (AES-256-GCM, see @automation/integrations) and is never returned to the browser.
+model IntegrationConnection {
+  id                    String              @id @default(uuid())
+  customerId            String              @map("customer_id")
+  provider              IntegrationProvider
+  status                IntegrationStatus   @default(active)
+  accountEmail          String?             @map("account_email")
+  scopes                String[]
+  encryptedRefreshToken String              @map("encrypted_refresh_token")
+  gscSiteUrl            String?             @map("gsc_site_url")
+  ga4PropertyId         String?             @map("ga4_property_id")
+  connectedById         String?             @map("connected_by_id")
+  lastSyncedAt          DateTime?           @map("last_synced_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  connectedBy User?    @relation(fields: [connectedById], references: [id], onDelete: SetNull)
+
+  @@unique([customerId, provider])
+  @@map("integration_connections")
 }

@@ -6,5 +6,5 @@ export * from "./schemas";
 export { TENANT_MODELS, scopeArgs, type Scope, type ScopedDb } from "./scope";
 export * from "./services/customers";
 export * from "./services/job-runs";
-export { CustomerStatus, JobRunStatus, MembershipRole, WebsiteStatus } from "./generated/enums";
-export type { Customer, Website, JobRun, AuditLog, Membership, User } from "./generated/client";
+export { CustomerStatus, IntegrationProvider, IntegrationStatus, JobRunStatus, MembershipRole, WebsiteStatus } from "./generated/enums";
+export type { Customer, Website, JobRun, AuditLog, IntegrationConnection, Membership, User } from "./generated/client";

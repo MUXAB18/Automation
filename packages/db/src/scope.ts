@@ -13,6 +13,7 @@ export const TENANT_MODELS: Record<string, string> = {
   Membership: "customerId",
   JobRun: "customerId",
   AuditLog: "customerId",
+  IntegrationConnection: "customerId",
 };
 
 const FILTERED_OPS = new Set([

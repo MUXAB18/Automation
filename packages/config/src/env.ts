@@ -11,6 +11,31 @@ export const webEnvSchema = dbEnvSchema.extend({
   BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
 });
 
+/** 32-byte key as 64 hex chars or base64 (generate: `openssl rand -base64 32`). */
+const encryptionKey = z
+  .string()
+  .min(1, "is required")
+  .refine((v) => {
+    const t = v.trim();
+    return /^[0-9a-fA-F]{64}$/.test(t) || Buffer.from(t, "base64").length === 32;
+  }, "must be 32 bytes (64 hex chars or base64)");
+
+export const encryptionEnvSchema = z.object({
+  ENCRYPTION_KEY: encryptionKey,
+  // Comma-separated retired keys, kept only so old ciphertext can still be decrypted.
+  ENCRYPTION_KEY_PREVIOUS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v
+        ? v
+            .split(",")
+            .map((k) => k.trim())
+            .filter(Boolean)
+        : [],
+    ),
+});
+
 export const workerEnvSchema = dbEnvSchema.extend({
   REDIS_URL: z.string().min(1, "is required").pipe(z.url()),
   HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1000).default(300_000),
@@ -43,6 +68,7 @@ export function loadEnv<S extends z.ZodType>(
   return result.data;
 }
 
+export type EncryptionEnv = z.output<typeof encryptionEnvSchema>;
 export type WebEnv = z.output<typeof webEnvSchema>;
 export type WorkerEnv = z.output<typeof workerEnvSchema>;
 export type SeedEnv = z.output<typeof seedEnvSchema>;

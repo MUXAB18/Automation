@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EnvError, loadEnv, webEnvSchema, workerEnvSchema } from "./env";
+import { EnvError, encryptionEnvSchema, loadEnv, webEnvSchema, workerEnvSchema } from "./env";
 
 const web = {
   DATABASE_URL: "postgresql://user@localhost:5432/automation",
@@ -35,5 +35,21 @@ describe("loadEnv", () => {
       REDIS_URL: "redis://localhost:6379",
     });
     expect(env.HEARTBEAT_INTERVAL_MS).toBe(300_000);
+  });
+});
+
+describe("encryptionEnvSchema", () => {
+  it("accepts a 32-byte base64 key and parses previous keys", () => {
+    const key = Buffer.alloc(32, 1).toString("base64");
+    const env = loadEnv(encryptionEnvSchema, {
+      ENCRYPTION_KEY: key,
+      ENCRYPTION_KEY_PREVIOUS: `${key}, ${key}`,
+    });
+    expect(env.ENCRYPTION_KEY_PREVIOUS).toHaveLength(2);
+  });
+
+  it("rejects missing or short keys", () => {
+    expect(() => loadEnv(encryptionEnvSchema, {})).toThrow(EnvError);
+    expect(() => loadEnv(encryptionEnvSchema, { ENCRYPTION_KEY: "short" })).toThrow(/32 bytes/);
   });
 });

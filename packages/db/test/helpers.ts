@@ -5,7 +5,7 @@ export const prisma = () => getUnscopedPrisma();
 
 export async function resetDb() {
   await prisma().$executeRawUnsafe(
-    'TRUNCATE "audit_log","job_runs","websites","memberships","customers","sessions","accounts","verifications","users" RESTART IDENTITY CASCADE',
+    'TRUNCATE "audit_log","job_runs","integration_connections","websites","memberships","customers","sessions","accounts","verifications","users" RESTART IDENTITY CASCADE',
   );
 }
 
