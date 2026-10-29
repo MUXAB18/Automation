@@ -39,3 +39,28 @@ export async function runLogged<T>(
     throw error;
   }
 }
+
+export type ForEachResult = { succeeded: number; failed: number };
+
+/**
+ * The generic scheduled-job pattern: run `work` once for every active customer,
+ * each with its own job_runs row. One customer failing never blocks the others.
+ * Per-customer behavior must come from that customer's data, never from code.
+ */
+export async function forEachActiveCustomer(
+  jobName: string,
+  work: (customer: { id: string; name: string }) => Promise<void>,
+): Promise<ForEachResult> {
+  const customers = await listActiveCustomers();
+  const result: ForEachResult = { succeeded: 0, failed: 0 };
+  for (const customer of customers) {
+    try {
+      await runLogged(jobName, customer.id, () => work(customer));
+      result.succeeded++;
+    } catch {
+      // Already recorded in job_runs by runLogged.
+      result.failed++;
+    }
+  }
+  return result;
+}
