@@ -1,0 +1,198 @@
+// Multi-tenant schema. Tables owned by a customer carry customer_id (indexed).
+// Access them through the scoped helpers in src/scope.ts, never the raw client.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CustomerStatus {
+  active
+  paused
+  archived
+}
+
+enum MembershipRole {
+  admin
+  member
+  viewer
+}
+
+enum WebsiteStatus {
+  active
+  inactive
+}
+
+enum JobRunStatus {
+  running
+  success
+  failed
+}
+
+// ---- Users and auth (managed by Better Auth) -------------------------------
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  // Platform admin: sees and manages every customer.
+  isAdmin       Boolean  @default(false) @map("is_admin")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  sessions    Session[]
+  accounts    Account[]
+  memberships Membership[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ---- Tenants -----------------------------------------------------------------
+
+model Customer {
+  id                 String         @id @default(uuid())
+  name               String
+  slug               String         @unique
+  status             CustomerStatus @default(active)
+  reportEmail        String?        @map("report_email")
+  reportIntervalDays Int            @default(15) @map("report_interval_days")
+  // Per-customer behavior lives in data: brand voice, schedule, etc.
+  settings           Json           @default("{}")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  websites    Website[]
+  memberships Membership[]
+  jobRuns     JobRun[]
+  auditLogs   AuditLog[]
+
+  @@index([status])
+  @@map("customers")
+}
+
+model Membership {
+  id         String         @id @default(uuid())
+  userId     String         @map("user_id")
+  customerId String         @map("customer_id")
+  role       MembershipRole
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, customerId])
+  @@index([customerId])
+  @@map("memberships")
+}
+
+model Website {
+  id         String        @id @default(uuid())
+  customerId String        @map("customer_id")
+  domain     String
+  isPrimary  Boolean       @default(false) @map("is_primary")
+  status     WebsiteStatus @default(active)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, domain])
+  @@index([customerId])
+  @@map("websites")
+}
+
+model JobRun {
+  id         String       @id @default(uuid())
+  jobName    String       @map("job_name")
+  // Null only for system-level jobs that are not customer-specific.
+  customerId String?      @map("customer_id")
+  status     JobRunStatus @default(running)
+  startedAt  DateTime     @default(now()) @map("started_at")
+  finishedAt DateTime?    @map("finished_at")
+  error      String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, startedAt(sort: Desc)])
+  @@index([jobName, startedAt(sort: Desc)])
+  @@map("job_runs")
+}
+
+// Append-only: application code only ever creates rows (no updated_at on purpose).
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?  @map("actor_user_id")
+  customerId  String?  @map("customer_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor    User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, createdAt(sort: Desc)])
+  @@index([actorUserId])
+  @@map("audit_log")
+}

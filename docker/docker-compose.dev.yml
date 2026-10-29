@@ -1,0 +1,12 @@
+# Local development services. Postgres runs on the host (or add it here if you prefer).
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

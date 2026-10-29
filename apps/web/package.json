@@ -8,9 +8,16 @@
     "start": "next start"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.5.0",
+    "better-auth": "^1.7.14",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.62.0",
     "next": "^16.4.3",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
