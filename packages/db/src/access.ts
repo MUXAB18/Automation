@@ -227,3 +227,60 @@ export async function listAgenciesWith(
     orderBy: { name: "asc" },
   });
 }
+
+/** What an actor may do on each client they can reach. Built from the same rules as getClientContext. */
+export type AccessMap = Map<
+  string,
+  { permissions: ReadonlySet<Permission>; roles: ReadonlySet<string> }
+>;
+
+/**
+ * Effective permissions on every client the actor can reach, in two queries. Section pages (Tasks, SEO, ...)
+ * use this to decide which clients each list may include: a client where the user lacks the section's
+ * permission contributes nothing, even though they can see the client itself.
+ */
+export async function getAccessMap(actor: Actor): Promise<AccessMap> {
+  const prisma = getUnscopedPrisma();
+  const map: AccessMap = new Map();
+
+  if (actor.isAdmin) {
+    const clients = await prisma.client.findMany({ select: { id: true } });
+    for (const c of clients)
+      map.set(c.id, { permissions: ALL_PERMISSIONS, roles: new Set(["platform_admin"]) });
+    return map;
+  }
+
+  const seatIsActive = {
+    userId: actor.userId,
+    status: "active",
+    user: { deactivatedAt: null },
+  } as const;
+  const [clientSeats, agencySeats] = await Promise.all([
+    prisma.clientMembership.findMany({
+      where: { userId: actor.userId, status: "active", agencyMembership: seatIsActive },
+      select: { clientId: true, roles: ROLES_SELECT },
+    }),
+    prisma.agencyMembership.findMany({
+      where: { ...seatIsActive, allClientsAccess: true },
+      select: { roles: ROLES_SELECT, agency: { select: { clients: { select: { id: true } } } } },
+    }),
+  ]);
+
+  const add = (clientId: string, rows: RoleRow[], clientLevel: boolean) => {
+    const entry = map.get(clientId) ?? {
+      permissions: new Set<Permission>(),
+      roles: new Set<string>(),
+    };
+    collect(rows, entry.permissions as Set<Permission>, entry.roles as Set<string>, clientLevel);
+    map.set(clientId, entry);
+  };
+  for (const seat of clientSeats) add(seat.clientId, seat.roles, true);
+  for (const seat of agencySeats) for (const c of seat.agency.clients) add(c.id, seat.roles, false);
+  for (const [id, entry] of map) if (entry.roles.size === 0) map.delete(id);
+  return map;
+}
+
+/** Client ids on which the actor holds a permission. */
+export function clientIdsWith(map: AccessMap, permission: Permission): string[] {
+  return [...map].filter(([, e]) => e.permissions.has(permission)).map(([id]) => id);
+}

@@ -1,0 +1,171 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import {
+  BarChart3,
+  CalendarDays,
+  FileBarChart,
+  FolderKanban,
+  LayoutDashboard,
+  ListChecks,
+  Menu,
+  Plug,
+  Search,
+  Settings,
+  Share2,
+  Users,
+  UserCog,
+  Workflow,
+} from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { SECTIONS, type Section, type SectionKey } from "@/lib/nav";
+import { cn } from "@/lib/utils";
+
+const ICONS: Record<SectionKey, React.ComponentType<{ className?: string }>> = {
+  overview: LayoutDashboard,
+  clients: Users,
+  projects: FolderKanban,
+  tasks: ListChecks,
+  seo: Search,
+  content: CalendarDays,
+  social: Share2,
+  analytics: BarChart3,
+  reports: FileBarChart,
+  automation: Workflow,
+  integrations: Plug,
+  team: UserCog,
+  settings: Settings,
+};
+
+const isActive = (section: Section, pathname: string) =>
+  section.href === "/"
+    ? pathname === "/"
+    : pathname === section.href || pathname.startsWith(`${section.href}/`);
+
+/**
+ * `visible` is computed on the server from the user's real permissions. It only decides what to
+ * show: every page re-checks (requireSection), so editing it in dev tools grants nothing.
+ */
+function NavList({
+  visible,
+  onNavigate,
+}: {
+  visible: readonly SectionKey[];
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname();
+  const groups = ["Workspace", "Marketing", "Automation", "Admin"] as const;
+  return (
+    <nav aria-label="Main" className="flex flex-col gap-5">
+      {groups.map((group) => {
+        const items = SECTIONS.filter((s) => s.group === group && visible.includes(s.key));
+        if (items.length === 0) return null;
+        return (
+          <div key={group}>
+            <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {group}
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {items.map((section) => {
+                const Icon = ICONS[section.key];
+                const active = isActive(section, pathname);
+                return (
+                  <li key={section.key}>
+                    <Link
+                      href={section.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                        active
+                          ? "bg-primary-soft font-medium text-primary"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-[18px] shrink-0" aria-hidden />
+                      <span className="flex-1 truncate">{section.label}</span>
+                      {section.status === "preview" ? (
+                        <Badge
+                          tone="outline"
+                          className="px-1.5 py-0 text-[10px] uppercase tracking-wide"
+                          title="Under development"
+                        >
+                          Preview
+                        </Badge>
+                      ) : null}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+function Brand() {
+  return (
+    <Link
+      href="/"
+      className="flex items-center gap-3 rounded-lg px-2 py-1 focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <BrandMark />
+      <span className="leading-tight">
+        <span className="block text-sm font-semibold tracking-tight">SEO &amp; Social</span>
+        <span className="block text-xs text-muted-foreground">Automation</span>
+      </span>
+    </Link>
+  );
+}
+
+export function DesktopSidebar({ visible }: { visible: readonly SectionKey[] }) {
+  return (
+    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar lg:flex">
+      <div className="px-4 py-5">
+        <Brand />
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 pb-4">
+        <NavList visible={visible} />
+      </div>
+    </aside>
+  );
+}
+
+/** Hamburger + slide-over drawer, shown below the `lg` breakpoint. Closes when you navigate. */
+export function MobileNav({ visible }: { visible: readonly SectionKey[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation menu">
+          <Menu className="size-5" aria-hidden />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-72 gap-0 bg-sidebar p-0">
+        <SheetTitle className="sr-only">Navigation</SheetTitle>
+        <SheetDescription className="sr-only">
+          Move between sections of the dashboard
+        </SheetDescription>
+        <div className="px-4 py-5">
+          <Brand />
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 pb-6">
+          <NavList visible={visible} onNavigate={() => setOpen(false)} />
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}

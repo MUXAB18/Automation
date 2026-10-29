@@ -106,3 +106,22 @@ export async function removeWebsiteAction(
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, message: "Website removed" };
 }
+
+type ConfirmResult = { error?: string; success?: string };
+const toConfirm = (r: FormState): ConfirmResult =>
+  r.error ? { error: r.error } : { success: r.message };
+
+/** Same as setStatusAction but shaped for ConfirmDialog (used for Archive). */
+export async function setStatusConfirmAction(
+  clientId: string,
+  formData: FormData,
+): Promise<ConfirmResult> {
+  return toConfirm(await setStatusAction(clientId, {}, formData));
+}
+
+export async function removeWebsiteConfirmAction(
+  clientId: string,
+  formData: FormData,
+): Promise<ConfirmResult> {
+  return toConfirm(await removeWebsiteAction(clientId, {}, formData));
+}

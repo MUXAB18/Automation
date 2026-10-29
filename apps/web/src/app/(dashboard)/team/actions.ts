@@ -117,3 +117,26 @@ export async function removeMemberAction(_prev: TeamState, formData: FormData): 
   revalidatePath("/team");
   return {};
 }
+
+type ConfirmResult = { error?: string; success?: string };
+
+/** Shaped for ConfirmDialog: removing a person from the agency team. */
+export async function removeMemberConfirmAction(formData: FormData): Promise<ConfirmResult> {
+  const r = await removeMemberAction({}, formData);
+  return r.error ? { error: r.error } : { success: "Removed from the team" };
+}
+
+export async function revokeInvitationConfirmAction(formData: FormData): Promise<ConfirmResult> {
+  const actor = await requireActor();
+  const parsed = z
+    .object({ agencyId: z.string().min(1), invitationId: z.string().min(1) })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Invalid request" };
+  try {
+    await revokeInvitation(actor, parsed.data.agencyId, parsed.data.invitationId);
+  } catch (error) {
+    return { error: toState(error).error };
+  }
+  revalidatePath("/team");
+  return { success: "Invitation revoked" };
+}

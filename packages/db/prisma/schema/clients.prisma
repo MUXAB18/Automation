@@ -141,6 +141,8 @@ model Project {
   startsOn    DateTime?     @map("starts_on") @db.Date
   endsOn      DateTime?     @map("ends_on") @db.Date
   createdById String?       @map("created_by_id")
+  // True for development seed rows, so the UI can tell them apart from live provider data.
+  isSample    Boolean       @default(false) @map("is_sample")
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   archivedAt  DateTime?     @map("archived_at") @db.Timestamptz(3)

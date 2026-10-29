@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireActor } from "@/lib/session";
 import {
   addWebsiteAction,
-  removeWebsiteAction,
+  removeWebsiteConfirmAction,
   setStatusAction,
+  setStatusConfirmAction,
   updateClientAction,
 } from "../actions";
 import { ClientForm } from "../client-form";
@@ -35,13 +36,17 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       <PageHeader
         title={client.name}
         description={client.slug}
+        breadcrumbs={[{ label: "Clients", href: "/clients" }, { label: client.name }]}
+        badges={<StatusBadge kind="client" status={client.status} />}
         actions={
-          <div className="flex items-center gap-3">
-            <StatusBadge status={client.status} />
-            {can(access, "client.status") ? (
-              <StatusControls status={client.status} action={setStatusAction.bind(null, id)} />
-            ) : null}
-          </div>
+          can(access, "client.status") ? (
+            <StatusControls
+              status={client.status}
+              clientName={client.name}
+              action={setStatusAction.bind(null, id)}
+              confirmAction={setStatusConfirmAction.bind(null, id)}
+            />
+          ) : null
         }
       />
 
@@ -70,7 +75,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                 websites={client.websites}
                 canManage={can(access, "website.manage")}
                 addAction={addWebsiteAction.bind(null, id)}
-                removeAction={removeWebsiteAction.bind(null, id)}
+                removeConfirmAction={removeWebsiteConfirmAction.bind(null, id)}
               />
             </CardContent>
           </Card>

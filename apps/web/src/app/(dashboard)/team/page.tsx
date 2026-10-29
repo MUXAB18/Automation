@@ -2,11 +2,11 @@ import { notFound } from "next/navigation";
 import { listAgenciesWith, listTeam } from "@automation/db";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireActor } from "@/lib/session";
-import { revokeInvitationAction } from "./actions";
-import { EditMemberForm, InviteForm, RemoveMemberForm } from "./forms";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { removeMemberConfirmAction, revokeInvitationConfirmAction } from "./actions";
+import { EditMemberForm, InviteForm } from "./forms";
 
 export const metadata = { title: "Team" };
 
@@ -26,7 +26,11 @@ export default async function TeamPage({
 
   return (
     <>
-      <PageHeader title="Team" description={`People and access for ${agency.name}.`} />
+      <PageHeader
+        title="Team"
+        description={`People and access for ${agency.name}.`}
+        breadcrumbs={[{ label: "Team" }]}
+      />
 
       <div className="grid gap-6">
         <Card>
@@ -58,13 +62,15 @@ export default async function TeamPage({
                         {inv.expiresAt.toLocaleDateString("en-CA")}
                       </p>
                     </div>
-                    <form action={revokeInvitationAction}>
-                      <input type="hidden" name="agencyId" value={agency.id} />
-                      <input type="hidden" name="invitationId" value={inv.id} />
-                      <Button type="submit" variant="outline" size="sm">
-                        Revoke
-                      </Button>
-                    </form>
+                    <ConfirmDialog
+                      triggerLabel="Revoke"
+                      title={`Revoke the invitation for ${inv.email}?`}
+                      description="The link stops working immediately. You can send a new invitation at any time."
+                      confirmLabel="Revoke invitation"
+                      destructive
+                      action={revokeInvitationConfirmAction}
+                      fields={{ agencyId: agency.id, invitationId: inv.id }}
+                    />
                   </li>
                 ))}
               </ul>
@@ -128,7 +134,16 @@ export default async function TeamPage({
                         selected={m.roles.map((r) => r.role.key)}
                         allClientsAccess={m.allClientsAccess}
                       />
-                      <RemoveMemberForm agencyId={agency.id} userId={m.userId} name={m.user.name} />
+                      <ConfirmDialog
+                        triggerLabel="Remove from team"
+                        triggerClassName="self-start text-destructive"
+                        title={`Remove ${m.user.name} from the team?`}
+                        description="They lose access to every client of this agency straight away. Their assigned tasks go back to the pool and their history is kept."
+                        confirmLabel="Remove person"
+                        destructive
+                        action={removeMemberConfirmAction}
+                        fields={{ agencyId: agency.id, userId: m.userId }}
+                      />
                     </div>
                   </details>
                 </li>

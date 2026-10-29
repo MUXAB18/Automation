@@ -16,6 +16,7 @@ export {
 export * from "./services/clients";
 export * from "./services/job-runs";
 export * from "./services/team";
+export * from "./services/workspace";
 export {
   ActorType,
   AgencyStatus,

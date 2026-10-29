@@ -116,8 +116,15 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
 
   const project = await prisma.project.upsert({
     where: { clientId_slug: { clientId, slug: "seo" } },
-    update: {},
-    create: { ...tenant, name: "SEO programme", slug: "seo", kind: "seo", createdById: adminId },
+    update: { isSample: true },
+    create: {
+      ...tenant,
+      name: "SEO programme",
+      slug: "seo",
+      kind: "seo",
+      createdById: adminId,
+      isSample: true,
+    },
   });
   const seoProject = await prisma.seoProject.upsert({
     where: { projectId_clientId: { projectId: project.id, clientId } },
@@ -135,8 +142,8 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
           device: "desktop",
         },
       },
-      update: {},
-      create: { ...tenant, seoProjectId: seoProject.id, term },
+      update: { isSample: true },
+      create: { ...tenant, seoProjectId: seoProject.id, term, isSample: true },
     });
   }
   await prisma.competitor.upsert({
@@ -152,20 +159,39 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
     },
   });
 
-  const existingTask = await prisma.task.findFirst({
-    where: { clientId, title: "Connect Google Search Console" },
-  });
-  if (!existingTask) {
+  // Sample tasks: every one is flagged is_sample so the UI labels them as development data.
+  const day = 24 * 60 * 60 * 1000;
+  const sampleTasks = [
+    { title: "Connect Google Search Console", status: "todo", priority: "high", due: 2 },
+    {
+      title: "Audit title tags on service pages",
+      status: "in_progress",
+      priority: "medium",
+      due: 5,
+    },
+    { title: "Draft April blog post outline", status: "in_review", priority: "medium", due: -1 },
+    { title: "Fix duplicate meta descriptions", status: "backlog", priority: "low", due: null },
+    { title: "Send fortnightly report to client", status: "done", priority: "medium", due: -3 },
+  ] as const;
+  for (const t of sampleTasks) {
+    const existing = await prisma.task.findFirst({ where: { clientId, title: t.title } });
+    if (existing) {
+      await prisma.task.update({ where: { id: existing.id }, data: { isSample: true } });
+      continue;
+    }
     const task = await prisma.task.create({
       data: {
         ...tenant,
         projectId: project.id,
-        title: "Connect Google Search Console",
-        description: "Authorise read-only access so rankings and clicks can sync.",
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
         type: "general",
-        priority: "high",
         assigneeId: adminId,
         reporterId: adminId,
+        dueAt: t.due === null ? null : new Date(Date.now() + t.due * day),
+        completedAt: t.status === "done" ? new Date() : null,
+        isSample: true,
       },
     });
     await prisma.taskEvent.create({
@@ -198,6 +224,71 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
     update: {},
     create: { ...tenant, name: "Social calendar", timezone: "America/Toronto" },
   });
+  const calendar = await prisma.contentCalendar.findUniqueOrThrow({
+    where: { clientId_name: { clientId, name: "Social calendar" } },
+  });
+  const sampleContent = [
+    {
+      title: "Spring customs update (LinkedIn)",
+      channel: "linkedin",
+      type: "social_post",
+      status: "scheduled",
+      inDays: 3,
+    },
+    {
+      title: "How to choose a freight forwarder",
+      channel: "website",
+      type: "blog_post",
+      status: "in_review",
+      inDays: 7,
+    },
+    {
+      title: "Team spotlight",
+      channel: "facebook",
+      type: "social_post",
+      status: "draft",
+      inDays: null,
+    },
+  ] as const;
+  for (const c of sampleContent) {
+    const exists = await prisma.contentItem.findFirst({ where: { clientId, title: c.title } });
+    if (exists) {
+      await prisma.contentItem.update({ where: { id: exists.id }, data: { isSample: true } });
+      continue;
+    }
+    await prisma.contentItem.create({
+      data: {
+        ...tenant,
+        calendarId: calendar.id,
+        projectId: project.id,
+        title: c.title,
+        type: c.type,
+        channel: c.channel,
+        status: c.status,
+        scheduledFor: c.inDays === null ? null : new Date(Date.now() + c.inDays * day),
+        createdById: adminId,
+        isSample: true,
+      },
+    });
+  }
+  // A sample notification, marked in its payload so the bell can label it.
+  const hasNote = await prisma.notification.findFirst({
+    where: { userId: adminId, type: "sample.welcome" },
+  });
+  if (!hasNote) {
+    await prisma.notification.create({
+      data: {
+        agencyId,
+        clientId,
+        userId: adminId,
+        type: "sample.welcome",
+        title: "Sample notification",
+        body: "Real notifications (approvals, sync failures, reports) will appear here.",
+        data: { sample: true },
+      },
+    });
+  }
+
   await prisma.reportTemplate.upsert({
     where: { agencyId_slug: { agencyId, slug: "fortnightly-seo" } },
     update: {},

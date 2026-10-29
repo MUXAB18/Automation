@@ -101,6 +101,8 @@ model Keyword {
   targetUrl    String?    @map("target_url")
   tags         String[]
   isActive     Boolean    @default(true) @map("is_active")
+  // True for development seed rows, so the UI can tell them apart from live provider data.
+  isSample     Boolean    @default(false) @map("is_sample")
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 

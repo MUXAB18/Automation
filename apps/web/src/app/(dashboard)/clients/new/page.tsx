@@ -12,7 +12,11 @@ export default async function NewClientPage() {
   if (!canCreateClient(actor)) notFound();
   return (
     <>
-      <PageHeader title="New client" description="Add a business to manage." />
+      <PageHeader
+        title="New client"
+        description="Add a business to manage."
+        breadcrumbs={[{ label: "Clients", href: "/clients" }, { label: "New client" }]}
+      />
       <ClientForm mode="create" action={createClientAction} />
     </>
   );

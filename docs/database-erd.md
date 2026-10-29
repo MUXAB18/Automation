@@ -953,6 +953,7 @@ Never updated, always inserted: `keyword_rank_snapshots`, `backlink_snapshots`, 
 * IDs are UUID v4 stored as `text` (Better Auth and the Phase 1 tables already use string ids; every key and foreign key is text, so there are no cast issues).
   Tables added in Phase 2 use `timestamptz(3)`; Phase 1 tables (`users`, `sessions`, `clients`, `websites`, `job_runs`, `audit_log.created_at`, …) remain
   `timestamp(3)` holding UTC. Enums are native PostgreSQL enums, JSON is `jsonb`, money is integer micro-units (`bigint`), ratios/positions are `numeric`.
+* `projects`, `tasks`, `keywords` and `content_items` carry `is_sample` (default false). The development seed sets it so the UI can label seed rows and never present them as live provider data (see [design-system.md](design-system.md)).
 * Every client-owned table has an index starting with `client_id` (or a composite key that does) so tenant-filtered queries stay index-backed.
 * Adding a client-owned table: add `agency_id` + `client_id`, the composite `client` relation, `@@unique([id, client_id])`, register it in
   `TENANT_MODELS` (`src/scope.ts`; a test fails if you forget), add cross-client tests, and use composite FKs for every reference to another client-owned table.

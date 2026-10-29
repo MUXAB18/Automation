@@ -92,6 +92,7 @@ Effective permissions on a client = (per-client roles, minus agency-only permiss
 ```
 request ──► proxy.ts            optimistic: no session cookie → /login (UX only)
         ──► layout / page       requireActor(): verified session from the database, else /login
+                                the layout also answers 404 for sections the user cannot use (before streaming)
         ──► server action/page  authorize(actor, {agencyId?, clientId?, projectId?}, permission)
                                    1. ids are cross-checked (project belongs to client, client to agency)
                                    2. actor's roles resolved from the database (never from the request)

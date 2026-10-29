@@ -39,4 +39,13 @@ describe("proxy", () => {
     const cookie = "better-auth.session_token=abc.def";
     expect(proxy(request("/invite/some-token", cookie)).headers.get("location")).toBeNull();
   });
+
+  it("always sets x-pathname for downstream pages, ignoring any value sent by the client", () => {
+    const req = new NextRequest("http://localhost:3000/team", {
+      headers: { cookie: "better-auth.session_token=abc.def", "x-pathname": "/spoofed" },
+    });
+    const res = proxy(req);
+    // NextResponse.next({ request: { headers } }) exposes the overridden headers as x-middleware-request-*.
+    expect(res.headers.get("x-middleware-request-x-pathname")).toBe("/team");
+  });
 });

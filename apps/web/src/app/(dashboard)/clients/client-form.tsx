@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField } from "@/components/form-field";
+import { useFormToast } from "@/hooks/use-form-toast";
 import type { FormState } from "@/lib/action-state";
 
 type Values = {
@@ -26,16 +27,15 @@ function Field({
   hint?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} aria-invalid={errors ? true : undefined} {...props} />
-      {hint && !errors ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-      {errors?.map((e) => (
-        <p key={e} className="text-xs text-destructive">
-          {e}
-        </p>
-      ))}
-    </div>
+    <FormField
+      id={name}
+      label={label}
+      hint={hint}
+      error={errors?.join(" ")}
+      required={props.required}
+    >
+      {(control) => <Input name={name} {...control} {...props} />}
+    </FormField>
   );
 }
 
@@ -51,6 +51,7 @@ export function ClientForm({
   readOnly?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, {});
+  useFormToast(state);
   const fe = state.fieldErrors ?? {};
   return (
     <form action={formAction} className="flex max-w-xl flex-col gap-4">

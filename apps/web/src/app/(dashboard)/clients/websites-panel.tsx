@@ -2,41 +2,27 @@
 
 import { useActionState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog, type ConfirmResult } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { useFormToast } from "@/hooks/use-form-toast";
 import { Input } from "@/components/ui/input";
 import type { FormState } from "@/lib/action-state";
 
 type Action = (prev: FormState, formData: FormData) => Promise<FormState>;
 
-function RemoveButton({ websiteId, action }: { websiteId: string; action: Action }) {
-  const [state, formAction, pending] = useActionState<FormState, FormData>(action, {});
-  return (
-    <form action={formAction} className="flex items-center gap-2">
-      <input type="hidden" name="websiteId" value={websiteId} />
-      {state.error ? (
-        <span role="alert" className="text-xs text-destructive">
-          {state.error}
-        </span>
-      ) : null}
-      <Button type="submit" variant="ghost" size="sm" disabled={pending}>
-        Remove
-      </Button>
-    </form>
-  );
-}
-
 export function WebsitesPanel({
   websites,
   canManage,
   addAction,
-  removeAction,
+  removeConfirmAction,
 }: {
   websites: { id: string; domain: string; isPrimary: boolean }[];
   canManage: boolean;
   addAction: Action;
-  removeAction: Action;
+  removeConfirmAction: (formData: FormData) => Promise<ConfirmResult>;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(addAction, {});
+  useFormToast(state);
   return (
     <div className="flex flex-col gap-4">
       {websites.length === 0 ? (
@@ -49,7 +35,18 @@ export function WebsitesPanel({
                 {site.domain}
                 {site.isPrimary ? <Badge>primary</Badge> : null}
               </span>
-              {canManage ? <RemoveButton websiteId={site.id} action={removeAction} /> : null}
+              {canManage ? (
+                <ConfirmDialog
+                  triggerLabel="Remove"
+                  triggerVariant="ghost"
+                  title={`Remove ${site.domain}?`}
+                  description="The website is removed from this client. Keywords and pages already collected for it are kept in history where they are referenced."
+                  confirmLabel="Remove website"
+                  destructive
+                  action={removeConfirmAction}
+                  fields={{ websiteId: site.id }}
+                />
+              ) : null}
             </li>
           ))}
         </ul>

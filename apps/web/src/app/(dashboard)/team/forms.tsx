@@ -6,7 +6,8 @@ import { FormMessage } from "@/components/form-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { inviteAction, removeMemberAction, setRolesAction, type TeamState } from "./actions";
+import { useActionToast } from "@/hooks/use-action-toast";
+import { inviteAction, setRolesAction, type TeamState } from "./actions";
 
 export type RoleOption = { key: string; name: string; scope: string; description: string | null };
 
@@ -58,6 +59,7 @@ export function InviteForm({
   clients: { id: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState<TeamState, FormData>(inviteAction, {});
+  useActionToast(state);
   const [clientId, setClientId] = useState("");
   // Server enforces the same rule; this only hides options that would be refused.
   const offered = roles.filter((r) => (clientId ? true : r.scope === "agency"));
@@ -128,6 +130,7 @@ export function EditMemberForm({
   allClientsAccess: boolean;
 }) {
   const [state, action, pending] = useActionState<TeamState, FormData>(setRolesAction, {});
+  useActionToast(state);
   return (
     <form action={action} className="flex flex-col gap-3">
       <input type="hidden" name="agencyId" value={agencyId} />
@@ -144,35 +147,6 @@ export function EditMemberForm({
       <FormMessage error={state.error} success={state.success} />
       <Button type="submit" size="sm" disabled={pending} className="self-start">
         Save roles
-      </Button>
-    </form>
-  );
-}
-
-export function RemoveMemberForm({
-  agencyId,
-  userId,
-  name,
-}: {
-  agencyId: string;
-  userId: string;
-  name: string;
-}) {
-  const [state, action, pending] = useActionState<TeamState, FormData>(removeMemberAction, {});
-  return (
-    <form action={action} className="flex flex-col gap-2">
-      <input type="hidden" name="agencyId" value={agencyId} />
-      <input type="hidden" name="userId" value={userId} />
-      <FormMessage error={state.error} />
-      <Button
-        type="submit"
-        variant="outline"
-        size="sm"
-        disabled={pending}
-        className="self-start text-destructive"
-        aria-label={`Remove ${name}`}
-      >
-        Remove from team
       </Button>
     </form>
   );

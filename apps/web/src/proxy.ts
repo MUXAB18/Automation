@@ -11,18 +11,23 @@ const isPublic = (pathname: string) =>
 // role checks happen on the server in requireActor() and every server action.
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  // Tell server components which page is being rendered. Always overwritten here, so a client
+  // cannot supply its own value. The dashboard layout uses it to answer 404 before streaming starts.
+  const forwarded = new Headers(request.headers);
+  forwarded.set("x-pathname", pathname);
+  const next = () => NextResponse.next({ request: { headers: forwarded } });
   const hasSession = Boolean(getSessionCookie(request));
 
   if (pathname === "/login" || pathname === "/forgot-password") {
-    return hasSession ? NextResponse.redirect(new URL("/", request.url)) : NextResponse.next();
+    return hasSession ? NextResponse.redirect(new URL("/", request.url)) : next();
   }
-  if (isPublic(pathname)) return NextResponse.next();
+  if (isPublic(pathname)) return next();
   if (!hasSession) {
     const login = new URL("/login", request.url);
     if (pathname !== "/") login.searchParams.set("next", pathname + search);
     return NextResponse.redirect(login);
   }
-  return NextResponse.next();
+  return next();
 }
 
 export const config = {
