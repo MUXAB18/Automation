@@ -19,7 +19,11 @@ export async function runLogged<T>(
   work: () => Promise<T>,
 ): Promise<T> {
   const db = forClient(clientId);
-  const run = await db.jobRun.create({ data: { jobName, clientId } });
+  const { agencyId } = await forSystem().client.findUniqueOrThrow({
+    where: { id: clientId },
+    select: { agencyId: true },
+  });
+  const run = await db.jobRun.create({ data: { jobName, clientId, agencyId } });
   try {
     const result = await work();
     await db.jobRun.update({

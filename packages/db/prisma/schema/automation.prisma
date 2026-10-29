@@ -1,0 +1,142 @@
+// ---- Automation rules and their executions --------------------------------------------------
+
+enum AutomationRuleStatus {
+  draft
+  active
+  paused
+  archived
+}
+
+enum AutomationTrigger {
+  schedule
+  event
+  webhook
+  manual
+}
+
+enum AutomationRunStatus {
+  queued
+  running
+  awaiting_approval
+  succeeded
+  failed
+  cancelled
+  skipped
+}
+
+enum StepRunStatus {
+  pending
+  running
+  succeeded
+  failed
+  skipped
+}
+
+// Per-client behavior as data (CLAUDE.md rule 3): triggers, conditions and steps are JSON.
+model AutomationRule {
+  id               String               @id @default(uuid())
+  agencyId         String               @map("agency_id")
+  clientId         String               @map("client_id")
+  name             String
+  description      String?
+  status           AutomationRuleStatus @default(draft)
+  trigger          AutomationTrigger
+  triggerConfig    Json                 @default("{}") @map("trigger_config") @db.JsonB
+  conditions       Json                 @default("[]") @db.JsonB
+  steps            Json                 @default("[]") @db.JsonB
+  // Publishing/website-changing steps always need approval (CLAUDE.md rule 6).
+  requiresApproval Boolean              @default(true) @map("requires_approval")
+  // Bumped on every edit so a run records exactly which definition it executed.
+  version          Int                  @default(1)
+  createdById      String?              @map("created_by_id")
+  lastRunAt        DateTime?            @map("last_run_at") @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?            @map("archived_at") @db.Timestamptz(3)
+
+  client         Client          @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  createdBy      User?           @relation("AutomationRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  automationRuns AutomationRun[]
+
+  @@unique([clientId, name])
+  @@unique([id, clientId])
+  @@index([clientId, status, trigger])
+  @@map("automation_rules")
+}
+
+model AutomationRun {
+  id               String              @id @default(uuid())
+  agencyId         String              @map("agency_id")
+  clientId         String              @map("client_id")
+  ruleId           String              @map("rule_id")
+  idempotencyKeyId String?             @map("idempotency_key_id")
+  ruleVersion      Int                 @map("rule_version")
+  trigger          AutomationTrigger
+  status           AutomationRunStatus @default(queued)
+  triggerPayload   Json                @default("{}") @map("trigger_payload") @db.JsonB
+  attempt          Int                 @default(1)
+  error            String?
+  startedAt        DateTime?           @map("started_at") @db.Timestamptz(3)
+  finishedAt       DateTime?           @map("finished_at") @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client             Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  rule               AutomationRule      @relation(fields: [ruleId, clientId], references: [id, clientId], onDelete: Cascade)
+  idempotencyKey     IdempotencyKey?     @relation(fields: [idempotencyKeyId, clientId], references: [id, clientId], onDelete: Restrict)
+  automationStepRuns AutomationStepRun[]
+
+  @@unique([idempotencyKeyId, clientId])
+  @@unique([id, clientId])
+  @@index([clientId, ruleId, createdAt(sort: Desc)])
+  @@index([clientId, status])
+  @@map("automation_runs")
+}
+
+model AutomationStepRun {
+  id         String        @id @default(uuid())
+  agencyId   String        @map("agency_id")
+  clientId   String        @map("client_id")
+  runId      String        @map("run_id")
+  stepIndex  Int           @map("step_index")
+  stepKey    String        @map("step_key")
+  action     String
+  status     StepRunStatus @default(pending)
+  attempt    Int           @default(1)
+  input      Json?         @db.JsonB
+  output     Json?         @db.JsonB
+  error      String?
+  startedAt  DateTime?     @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime?     @map("finished_at") @db.Timestamptz(3)
+
+  client Client        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  run    AutomationRun @relation(fields: [runId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([runId, stepIndex, attempt])
+  @@index([clientId, status])
+  @@map("automation_step_runs")
+}
+
+// Makes retried requests/jobs safe: the first caller for (agency, scope, key) wins, later callers
+// get the stored response. clientId is null for agency-level operations.
+model IdempotencyKey {
+  id             String    @id @default(uuid())
+  agencyId       String    @map("agency_id")
+  clientId       String?   @map("client_id")
+  scope          String
+  key            String
+  requestHash    String?   @map("request_hash")
+  responseStatus Int?      @map("response_status")
+  response       Json?     @db.JsonB
+  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client        Client?        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  automationRun AutomationRun?
+
+  @@unique([agencyId, scope, key])
+  @@unique([id, clientId])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}

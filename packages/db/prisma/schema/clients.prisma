@@ -1,0 +1,205 @@
+// ---- Clients (the businesses an agency manages), projects and websites ---------------------
+
+enum ClientStatus {
+  active
+  paused
+  archived
+}
+
+enum ProjectKind {
+  seo
+  social
+  content
+  general
+}
+
+enum ProjectStatus {
+  active
+  paused
+  completed
+  archived
+}
+
+enum ProjectRole {
+  lead
+  contributor
+  viewer
+}
+
+enum WebsiteStatus {
+  active
+  inactive
+}
+
+// A business managed by an agency. Root of all client-owned data.
+model Client {
+  id                 String       @id @default(uuid())
+  agencyId           String       @map("agency_id")
+  name               String
+  slug               String
+  status             ClientStatus @default(active)
+  timezone           String       @default("UTC")
+  locale             String       @default("en-CA")
+  reportEmail        String?      @map("report_email")
+  reportIntervalDays Int          @default(15) @map("report_interval_days")
+  // Per-client behavior lives in data: brand voice, schedule, etc.
+  settings           Json         @default("{}") @db.JsonB
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  // Clients are archived, not deleted; hard delete is an explicit purge (see docs).
+  archivedAt         DateTime?    @map("archived_at") @db.Timestamptz(3)
+
+  agency               Agency                @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  analyticsSources     AnalyticsSource[]
+  metricSnapshots      MetricSnapshot[]
+  automationRules      AutomationRule[]
+  automationRuns       AutomationRun[]
+  automationStepRuns   AutomationStepRun[]
+  idempotencyKeys      IdempotencyKey[]
+  clientMemberships    ClientMembership[]
+  projects             Project[]
+  projectMemberships   ProjectMembership[]
+  websites             Website[]
+  brandGuidelines      BrandGuideline[]
+  contentCalendars     ContentCalendar[]
+  contentItems         ContentItem[]
+  contentVersions      ContentVersion[]
+  contentAssets        ContentAsset[]
+  aiJobs               AiJob[]
+  aiUsageRecords       AiUsageRecord[]
+  integrationAccounts  IntegrationAccount[]
+  syncRuns             SyncRun[]
+  syncErrors           SyncError[]
+  webhookEvents        WebhookEvent[]
+  notifications        Notification[]
+  jobRuns              JobRun[]
+  contentApprovals     ContentApproval[]
+  approvalEvents       ApprovalEvent[]
+  publishingJobs       PublishingJob[]
+  publishedPosts       PublishedPost[]
+  postMetricSnapshots  PostMetricSnapshot[]
+  reports              Report[]
+  reportSections       ReportSection[]
+  reportDataSnapshots  ReportDataSnapshot[]
+  reportDeliveries     ReportDelivery[]
+  seoProjects          SeoProject[]
+  keywords             Keyword[]
+  keywordRankSnapshots KeywordRankSnapshot[]
+  siteAudits           SiteAudit[]
+  seoIssues            SeoIssue[]
+  seoIssueHistories    SeoIssueHistory[]
+  competitors          Competitor[]
+  backlinkSnapshots    BacklinkSnapshot[]
+  websitePages         WebsitePage[]
+  tasks                Task[]
+  taskDependencies     TaskDependency[]
+  taskComments         TaskComment[]
+  taskAttachments      TaskAttachment[]
+  taskEvents           TaskEvent[]
+  timeEntries          TimeEntry[]
+
+  @@unique([agencyId, slug])
+  // Target of the (client_id, agency_id) composite FK present on every client-owned table.
+  @@unique([id, agencyId])
+  @@index([agencyId, status])
+  @@map("clients")
+}
+
+// Access of one user to one client. The user must already be a member of the client's agency
+// and the role must be one of that agency's roles (both enforced by composite FKs).
+model ClientMembership {
+  id        String           @id @default(uuid())
+  agencyId  String           @map("agency_id")
+  clientId  String           @map("client_id")
+  userId    String           @map("user_id")
+  roleId    String           @map("role_id")
+  status    MembershipStatus @default(active)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  client             Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  agencyMembership   AgencyMembership    @relation(fields: [agencyId, userId], references: [agencyId, userId], onDelete: Cascade)
+  role               Role                @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
+  projectMemberships ProjectMembership[]
+
+  @@unique([userId, clientId])
+  @@index([clientId])
+  @@index([roleId])
+  @@map("client_memberships")
+}
+
+// A unit of work for a client (an SEO programme, a social calendar, ...).
+model Project {
+  id          String        @id @default(uuid())
+  agencyId    String        @map("agency_id")
+  clientId    String        @map("client_id")
+  name        String
+  slug        String
+  kind        ProjectKind   @default(general)
+  status      ProjectStatus @default(active)
+  description String?
+  startsOn    DateTime?     @map("starts_on") @db.Date
+  endsOn      DateTime?     @map("ends_on") @db.Date
+  createdById String?       @map("created_by_id")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt  DateTime?     @map("archived_at") @db.Timestamptz(3)
+
+  client             Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  createdBy          User?               @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  projectMemberships ProjectMembership[]
+  contentCalendars   ContentCalendar[]
+  contentItems       ContentItem[]
+  seoProject         SeoProject?
+  tasks              Task[]
+  timeEntries        TimeEntry[]
+
+  @@unique([clientId, slug])
+  @@unique([id, clientId])
+  @@index([clientId, status])
+  @@map("projects")
+}
+
+model ProjectMembership {
+  id        String      @id @default(uuid())
+  agencyId  String      @map("agency_id")
+  clientId  String      @map("client_id")
+  projectId String      @map("project_id")
+  userId    String      @map("user_id")
+  role      ProjectRole @default(contributor)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client           Client           @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  project          Project          @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Cascade)
+  // Only people who have access to the client can join one of its projects.
+  clientMembership ClientMembership @relation(fields: [userId, clientId], references: [userId, clientId], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([clientId])
+  @@index([userId])
+  @@map("project_memberships")
+}
+
+// A site a client owns. SEO work, pages and analytics hang off it.
+model Website {
+  id        String        @id @default(uuid())
+  agencyId  String        @map("agency_id")
+  clientId  String        @map("client_id")
+  domain    String
+  isPrimary Boolean       @default(false) @map("is_primary")
+  status    WebsiteStatus @default(active)
+  cmsType   String?       @map("cms_type")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  client           Client            @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  analyticsSources AnalyticsSource[]
+  seoProjects      SeoProject[]
+  websitePages     WebsitePage[]
+
+  @@unique([clientId, domain])
+  @@unique([id, clientId])
+  @@index([clientId])
+  @@map("websites")
+}

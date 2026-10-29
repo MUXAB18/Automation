@@ -7,7 +7,16 @@ import {
   ScopeViolationError,
   ValidationError,
 } from "../errors";
-import { addMember, makeClient, makeUser, prisma, resetDb } from "../../test/helpers";
+import {
+  addAgencyStaff,
+  addMember,
+  getDefaultAgencyId,
+  makeAgency,
+  makeClient,
+  makeUser,
+  prisma,
+  resetDb,
+} from "../../test/helpers";
 import {
   addWebsite,
   createClient,
@@ -19,7 +28,10 @@ import {
   updateClient,
 } from "./clients";
 
-beforeEach(resetDb);
+beforeEach(async () => {
+  await resetDb();
+  await getDefaultAgencyId();
+});
 
 describe("client visibility", () => {
   it("lets a member see only clients they belong to", async () => {
@@ -75,7 +87,9 @@ describe("tenant isolation in scoped clients", () => {
   it("cannot read or write another client's rows", async () => {
     const a = await makeClient("A");
     const b = await makeClient("B");
-    await prisma().website.create({ data: { clientId: b.id, domain: "b.com", isPrimary: true } });
+    await prisma().website.create({
+      data: { agencyId: b.agencyId, clientId: b.id, domain: "b.com", isPrimary: true },
+    });
 
     const db = forClient(a.id);
     expect(await db.website.findMany()).toEqual([]);
@@ -84,7 +98,7 @@ describe("tenant isolation in scoped clients", () => {
     });
     expect(await db.website.deleteMany()).toEqual({ count: 0 });
     await expect(
-      db.website.create({ data: { clientId: b.id, domain: "evil.com" } }),
+      db.website.create({ data: { agencyId: b.agencyId, clientId: b.id, domain: "evil.com" } }),
     ).rejects.toBeInstanceOf(ScopeViolationError);
     expect(await prisma().website.count({ where: { clientId: b.id } })).toBe(1);
   });
@@ -92,7 +106,9 @@ describe("tenant isolation in scoped clients", () => {
   it("applies the scope inside transactions", async () => {
     const a = await makeClient("A");
     const b = await makeClient("B");
-    await prisma().website.create({ data: { clientId: b.id, domain: "b.com" } });
+    await prisma().website.create({
+      data: { agencyId: b.agencyId, clientId: b.id, domain: "b.com" },
+    });
     const seen = await forClient(a.id).$transaction((tx) => tx.website.findMany());
     expect(seen).toEqual([]);
   });
@@ -250,5 +266,59 @@ describe("websites", () => {
     await expect(addWebsite(viewer, c.id, { domain: "x.com" })).rejects.toBeInstanceOf(
       ForbiddenError,
     );
+  });
+});
+
+describe("agencies", () => {
+  it("creates clients in the only agency, and asks which one when there are several", async () => {
+    const admin = await makeUser(true);
+    const created = await createClient(admin, { name: "One" });
+    expect((await prisma().client.findUniqueOrThrow({ where: { id: created.id } })).agencyId).toBe(
+      await getDefaultAgencyId(),
+    );
+
+    const second = await makeAgency("Second");
+    await expect(createClient(admin, { name: "Two" })).rejects.toBeInstanceOf(ValidationError);
+    const inSecond = await createClient(admin, { name: "Two", agencyId: second.id });
+    expect(inSecond.agencyId).toBe(second.id);
+  });
+
+  it("lets the same slug exist in different agencies", async () => {
+    const other = await makeAgency("Other");
+    await makeClient("Same", "same");
+    await expect(makeClient("Same", "same", other.id)).resolves.toBeTruthy();
+    await expect(makeClient("Same", "same")).rejects.toThrow();
+  });
+
+  it("gives agency staff with all-clients access every client of their agency, and nothing elsewhere", async () => {
+    const staff = await makeUser();
+    const other = await makeAgency("Other");
+    const mine = await makeClient("Mine");
+    const theirs = await makeClient("Theirs", "theirs", other.id);
+    await addAgencyStaff(staff, await getDefaultAgencyId(), "admin", true);
+
+    expect((await listClients(staff)).map((c) => c.id)).toEqual([mine.id]);
+    await expect(getClient(staff, theirs.id)).rejects.toBeInstanceOf(NotFoundError);
+    // Agency admin holds the admin permissions on the agency's clients.
+    await expect(setClientStatus(staff, mine.id, "paused")).resolves.toBeTruthy();
+  });
+
+  it("does not let agency staff without all-clients access see unassigned clients", async () => {
+    const staff = await makeUser();
+    const client = await makeClient("Mine");
+    await addAgencyStaff(staff, await getDefaultAgencyId(), "admin", false);
+    expect(await listClients(staff)).toEqual([]);
+    await expect(getClient(staff, client.id)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("ignores suspended memberships", async () => {
+    const member = await makeUser();
+    const client = await makeClient("Mine");
+    const membership = await addMember(member, client.id, "admin");
+    await prisma().clientMembership.update({
+      where: { id: membership.id },
+      data: { status: "suspended" },
+    });
+    await expect(getClient(member, client.id)).rejects.toBeInstanceOf(NotFoundError);
   });
 });

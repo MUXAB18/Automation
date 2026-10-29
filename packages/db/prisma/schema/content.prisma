@@ -1,0 +1,267 @@
+// ---- Content: brand guidelines, calendar, items, versions, assets, AI jobs ------------------
+
+enum ContentType {
+  social_post
+  blog_post
+  page_update
+  email
+  other
+}
+
+enum ContentChannel {
+  website
+  linkedin
+  facebook
+  instagram
+  x
+  google_business
+  email
+}
+
+enum ContentStatus {
+  draft
+  in_review
+  changes_requested
+  approved
+  scheduled
+  publishing
+  published
+  failed
+  archived
+}
+
+enum ContentAuthorKind {
+  human
+  ai
+}
+
+enum AssetKind {
+  image
+  video
+  document
+  other
+}
+
+enum CalendarStatus {
+  active
+  archived
+}
+
+enum AiJobKind {
+  generate_content
+  rewrite
+  summarize
+  seo_analysis
+  report_summary
+  other
+}
+
+enum AiJobStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+// Versioned voice/tone rules. A new version is a new row (history kept); one is flagged active.
+model BrandGuideline {
+  id          String    @id @default(uuid())
+  agencyId    String    @map("agency_id")
+  clientId    String    @map("client_id")
+  name        String
+  version     Int       @default(1)
+  toneOfVoice String?   @map("tone_of_voice")
+  audience    String?
+  styleNotes  String?   @map("style_notes")
+  dos         String[]
+  donts       String[]
+  bannedTerms String[]  @map("banned_terms")
+  isActive    Boolean   @default(false) @map("is_active")
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client       Client        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  createdBy    User?         @relation("BrandGuidelineCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  contentItems ContentItem[]
+
+  @@unique([clientId, name, version])
+  @@unique([id, clientId])
+  @@index([clientId, isActive])
+  @@map("brand_guidelines")
+}
+
+model ContentCalendar {
+  id        String         @id @default(uuid())
+  agencyId  String         @map("agency_id")
+  clientId  String         @map("client_id")
+  projectId String?        @map("project_id")
+  name      String
+  timezone  String         @default("UTC")
+  status    CalendarStatus @default(active)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client       Client        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Restrict)
+  contentItems ContentItem[]
+
+  @@unique([clientId, name])
+  @@unique([id, clientId])
+  @@map("content_calendars")
+}
+
+model ContentItem {
+  id               String         @id @default(uuid())
+  agencyId         String         @map("agency_id")
+  clientId         String         @map("client_id")
+  calendarId       String?        @map("calendar_id")
+  projectId        String?        @map("project_id")
+  brandGuidelineId String?        @map("brand_guideline_id")
+  currentVersionId String?        @map("current_version_id")
+  title            String
+  type             ContentType
+  channel          ContentChannel
+  status           ContentStatus  @default(draft)
+  // Publishing needs an approval (CLAUDE.md rule 6); this flag can only be relaxed by an admin policy.
+  requiresApproval Boolean        @default(true) @map("requires_approval")
+  scheduledFor     DateTime?      @map("scheduled_for") @db.Timestamptz(3)
+  publishedAt      DateTime?      @map("published_at") @db.Timestamptz(3)
+  createdById      String?        @map("created_by_id")
+  assignedToId     String?        @map("assigned_to_id")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?      @map("archived_at") @db.Timestamptz(3)
+
+  client           Client            @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  calendar         ContentCalendar?  @relation(fields: [calendarId, clientId], references: [id, clientId], onDelete: Restrict)
+  project          Project?          @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Restrict)
+  brandGuideline   BrandGuideline?   @relation(fields: [brandGuidelineId, clientId], references: [id, clientId], onDelete: Restrict)
+  currentVersion   ContentVersion?   @relation("CurrentVersion", fields: [currentVersionId, clientId], references: [id, clientId], onDelete: Restrict)
+  createdBy        User?             @relation("ContentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  assignedTo       User?             @relation("ContentAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  contentVersions  ContentVersion[]
+  contentAssets    ContentAsset[]
+  contentApprovals ContentApproval[]
+  publishingJobs   PublishingJob[]
+  publishedPosts   PublishedPost[]
+
+  @@unique([id, clientId])
+  @@index([clientId, status, scheduledFor])
+  @@index([clientId, calendarId])
+  @@map("content_items")
+}
+
+// Immutable once written: edits create the next version number.
+model ContentVersion {
+  id            String            @id @default(uuid())
+  agencyId      String            @map("agency_id")
+  clientId      String            @map("client_id")
+  contentItemId String            @map("content_item_id")
+  versionNo     Int               @map("version_no")
+  title         String?
+  body          String
+  metadata      Json              @default("{}") @db.JsonB
+  authorKind    ContentAuthorKind @default(human) @map("author_kind")
+  createdById   String?           @map("created_by_id")
+  aiJobId       String?           @map("ai_job_id")
+  changeNote    String?           @map("change_note")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client           Client            @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  contentItem      ContentItem       @relation(fields: [contentItemId, clientId], references: [id, clientId], onDelete: Cascade)
+  createdBy        User?             @relation("ContentVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  aiJob            AiJob?            @relation(fields: [aiJobId, clientId], references: [id, clientId], onDelete: Restrict)
+  currentVersions  ContentItem[]     @relation("CurrentVersion")
+  contentApprovals ContentApproval[]
+  publishingJobs   PublishingJob[]
+
+  @@unique([contentItemId, versionNo])
+  @@unique([id, clientId])
+  // Lets approvals and publishing jobs prove that version, item and client all agree.
+  @@unique([id, contentItemId, clientId])
+  @@index([clientId])
+  @@map("content_versions")
+}
+
+model ContentAsset {
+  id            String    @id @default(uuid())
+  agencyId      String    @map("agency_id")
+  clientId      String    @map("client_id")
+  contentItemId String?   @map("content_item_id")
+  kind          AssetKind
+  fileName      String    @map("file_name")
+  mimeType      String    @map("mime_type")
+  sizeBytes     BigInt    @map("size_bytes")
+  width         Int?
+  height        Int?
+  altText       String?   @map("alt_text")
+  storageKey    String    @unique @map("storage_key")
+  sha256        String    @db.Char(64)
+  createdById   String?   @map("created_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  client      Client       @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  contentItem ContentItem? @relation(fields: [contentItemId, clientId], references: [id, clientId], onDelete: Restrict)
+  createdBy   User?        @relation("ContentAssetCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([id, clientId])
+  @@index([clientId, contentItemId])
+  @@map("content_assets")
+}
+
+// One AI request. Prompts/outputs are stored for audit; no API keys ever enter this table.
+model AiJob {
+  id            String      @id @default(uuid())
+  agencyId      String      @map("agency_id")
+  clientId      String      @map("client_id")
+  kind          AiJobKind
+  status        AiJobStatus @default(queued)
+  provider      String
+  model         String
+  promptVersion String?     @map("prompt_version")
+  input         Json        @default("{}") @db.JsonB
+  output        Json?       @db.JsonB
+  error         String?
+  attempt       Int         @default(1)
+  requestedById String?     @map("requested_by_id")
+  startedAt     DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt    DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client          Client           @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  requestedBy     User?            @relation("AiJobRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  contentVersions ContentVersion[]
+  aiUsageRecords  AiUsageRecord[]
+
+  @@unique([id, clientId])
+  @@index([clientId, status, createdAt(sort: Desc)])
+  @@map("ai_jobs")
+}
+
+// Append-only usage ledger for cost control and billing. Cost is in micro-units (1e-6) of `currency`.
+model AiUsageRecord {
+  id           String   @id @default(uuid())
+  agencyId     String   @map("agency_id")
+  clientId     String   @map("client_id")
+  aiJobId      String   @map("ai_job_id")
+  provider     String
+  model        String
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  cachedTokens Int      @default(0) @map("cached_tokens")
+  costMicros   BigInt   @map("cost_micros")
+  currency     String   @default("USD") @db.VarChar(3)
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  client Client @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  aiJob  AiJob  @relation(fields: [aiJobId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@index([agencyId, occurredAt])
+  @@index([clientId, occurredAt])
+  @@index([aiJobId])
+  @@map("ai_usage_records")
+}

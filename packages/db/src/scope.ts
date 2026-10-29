@@ -9,12 +9,81 @@ type Args = Record<string, unknown> | undefined;
 /** Prisma model name -> the column that holds the owning client id. */
 export const TENANT_MODELS: Record<string, string> = {
   Client: "id",
+  AnalyticsSource: "clientId",
+  MetricSnapshot: "clientId",
+  AutomationRule: "clientId",
+  AutomationRun: "clientId",
+  AutomationStepRun: "clientId",
+  IdempotencyKey: "clientId",
+  ClientMembership: "clientId",
+  Project: "clientId",
+  ProjectMembership: "clientId",
   Website: "clientId",
-  Membership: "clientId",
-  JobRun: "clientId",
+  BrandGuideline: "clientId",
+  ContentCalendar: "clientId",
+  ContentItem: "clientId",
+  ContentVersion: "clientId",
+  ContentAsset: "clientId",
+  AiJob: "clientId",
+  AiUsageRecord: "clientId",
+  IntegrationAccount: "clientId",
+  SyncRun: "clientId",
+  SyncError: "clientId",
+  WebhookEvent: "clientId",
+  Notification: "clientId",
   AuditLog: "clientId",
-  IntegrationConnection: "clientId",
+  JobRun: "clientId",
+  ContentApproval: "clientId",
+  ApprovalEvent: "clientId",
+  PublishingJob: "clientId",
+  PublishedPost: "clientId",
+  PostMetricSnapshot: "clientId",
+  Report: "clientId",
+  ReportSection: "clientId",
+  ReportDataSnapshot: "clientId",
+  ReportDelivery: "clientId",
+  SeoProject: "clientId",
+  Keyword: "clientId",
+  KeywordRankSnapshot: "clientId",
+  SiteAudit: "clientId",
+  SeoIssue: "clientId",
+  SeoIssueHistory: "clientId",
+  Competitor: "clientId",
+  BacklinkSnapshot: "clientId",
+  WebsitePage: "clientId",
+  Task: "clientId",
+  TaskDependency: "clientId",
+  TaskComment: "clientId",
+  TaskAttachment: "clientId",
+  TaskEvent: "clientId",
+  TimeEntry: "clientId",
 };
+
+/**
+ * Agency-level models (no client_id). From a client scope they are reachable only through agencies
+ * that contain one of the scoped clients, and they cannot be created or re-parented there: use
+ * forAdmin/forSystem (platform operations) or the agency services. Value = relation path from the
+ * model to its Agency.
+ */
+export const AGENCY_MODELS: Record<string, readonly string[]> = {
+  Agency: [],
+  AgencyMembership: ["agency"],
+  Role: ["agency"],
+  RolePermission: ["role", "agency"],
+  ReportTemplate: ["agency"],
+  NotificationPreference: ["agencyMembership", "agency"],
+};
+
+/** Not tenant data: Better Auth tables and global catalogues (permissions, providers, metrics). */
+export const GLOBAL_MODELS: readonly string[] = [
+  "User",
+  "Session",
+  "Account",
+  "Verification",
+  "Permission",
+  "Integration",
+  "MetricDefinition",
+];
 
 const FILTERED_OPS = new Set([
   "findMany",
@@ -69,14 +138,46 @@ function scopeCreateData(
   return data;
 }
 
+function scopeAgencyArgs(
+  model: string,
+  operation: string,
+  args: Args,
+  path: readonly string[],
+  ids: readonly string[],
+): Args {
+  if (CREATE_OPS.has(operation)) {
+    throw new ScopeViolationError(`${model} rows can only be created with admin scope`);
+  }
+  const next: Record<string, unknown> = { ...args };
+  if (FILTERED_OPS.has(operation)) {
+    const inClients = { clients: { some: { id: { in: [...ids] } } } };
+    const filter = path.reduceRight<Record<string, unknown>>(
+      (inner, key) => ({ [key]: inner }),
+      inClients,
+    );
+    const where = (next.where as Record<string, unknown> | undefined) ?? {};
+    next.where = { ...where, AND: [...asArray(where.AND as never), filter] };
+  }
+  if (operation.startsWith("update")) {
+    const data = next.data as Record<string, unknown> | undefined;
+    if (data && ("agencyId" in data || "agency" in data)) {
+      throw new ScopeViolationError(`${model} cannot be moved to another agency`);
+    }
+  }
+  return next;
+}
+
 /**
  * Pure function: rewrites Prisma operation args so they can only touch the
  * scoped clients. Exported for unit tests.
  */
 export function scopeArgs(model: string, operation: string, args: Args, scope: Scope): Args {
-  const field = TENANT_MODELS[model];
-  if (!field || "all" in scope) return args;
+  if ("all" in scope) return args;
   const ids = scope.clientIds;
+  const agencyPath = AGENCY_MODELS[model];
+  if (agencyPath) return scopeAgencyArgs(model, operation, args, agencyPath, ids);
+  const field = TENANT_MODELS[model];
+  if (!field) return args;
   const next: Record<string, unknown> = { ...args };
 
   if (FILTERED_OPS.has(operation)) {

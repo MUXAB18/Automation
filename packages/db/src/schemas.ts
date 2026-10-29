@@ -37,6 +37,8 @@ const clientFields = {
 
 export const createClientSchema = z.object({
   ...clientFields,
+  /** Required only when more than one agency exists. */
+  agencyId: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   slug: z.preprocess(emptyToUndefined, slugSchema.optional()),
   primaryDomain: z.preprocess(emptyToUndefined, domainSchema.optional()),
 });

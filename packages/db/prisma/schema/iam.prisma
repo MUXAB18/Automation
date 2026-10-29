@@ -1,0 +1,211 @@
+// ---- Identity, agencies, roles and permissions ---------------------------------------------
+
+enum AgencyStatus {
+  active
+  suspended
+  archived
+}
+
+enum MembershipStatus {
+  invited
+  active
+  suspended
+}
+
+enum RoleScope {
+  agency
+  client
+}
+
+// ---- Users and auth (managed by Better Auth) -------------------------------
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  // Platform admin: operates the whole platform across all agencies.
+  isAdmin       Boolean   @default(false) @map("is_admin")
+  // Soft deactivation: history that references the user is kept.
+  deactivatedAt DateTime? @map("deactivated_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  automationRuleCreators  AutomationRule[]     @relation("AutomationRuleCreator")
+  projectCreators         Project[]            @relation("ProjectCreator")
+  brandGuidelineCreators  BrandGuideline[]     @relation("BrandGuidelineCreator")
+  contentCreators         ContentItem[]        @relation("ContentCreator")
+  contentAssignees        ContentItem[]        @relation("ContentAssignee")
+  contentVersionAuthors   ContentVersion[]     @relation("ContentVersionAuthor")
+  contentAssetCreators    ContentAsset[]       @relation("ContentAssetCreator")
+  aiJobRequesters         AiJob[]              @relation("AiJobRequester")
+  sessions                Session[]
+  accounts                Account[]
+  agencyMemberships       AgencyMembership[]
+  integrationConnectors   IntegrationAccount[] @relation("IntegrationConnector")
+  notificationRecipients  Notification[]       @relation("NotificationRecipient")
+  auditActors             AuditLog[]           @relation("AuditActor")
+  approvalRequesters      ContentApproval[]    @relation("ApprovalRequester")
+  approvalDeciders        ContentApproval[]    @relation("ApprovalDecider")
+  approvalEventActors     ApprovalEvent[]      @relation("ApprovalEventActor")
+  publishRequesters       PublishingJob[]      @relation("PublishRequester")
+  reportCreators          Report[]             @relation("ReportCreator")
+  reportApprovers         Report[]             @relation("ReportApprover")
+  auditTriggers           SiteAudit[]          @relation("AuditTrigger")
+  issueChangers           SeoIssueHistory[]    @relation("IssueChanger")
+  taskAssignees           Task[]               @relation("TaskAssignee")
+  taskReporters           Task[]               @relation("TaskReporter")
+  taskCommentAuthors      TaskComment[]        @relation("TaskCommentAuthor")
+  taskAttachmentUploaders TaskAttachment[]     @relation("TaskAttachmentUploader")
+  taskEventActors         TaskEvent[]          @relation("TaskEventActor")
+  timeEntryUsers          TimeEntry[]          @relation("TimeEntryUser")
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// A reseller / marketing agency: the top-level tenant. Owns clients, roles, report templates.
+model Agency {
+  id                String             @id @default(uuid())
+  name              String
+  slug              String             @unique
+  status            AgencyStatus       @default(active)
+  timezone          String             @default("UTC")
+  settings          Json               @default("{}") @db.JsonB
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt        DateTime?          @map("archived_at") @db.Timestamptz(3)
+  clients           Client[]
+  agencyMemberships AgencyMembership[]
+  roles             Role[]
+  auditLogs         AuditLog[]
+  reportTemplates   ReportTemplate[]
+
+  @@map("agencies")
+}
+
+// A user's seat in an agency. `allClientsAccess` lets agency staff see every client without
+// per-client memberships; otherwise access comes only from ClientMembership rows.
+model AgencyMembership {
+  id               String           @id @default(uuid())
+  agencyId         String           @map("agency_id")
+  userId           String           @map("user_id")
+  roleId           String           @map("role_id")
+  status           MembershipStatus @default(active)
+  allClientsAccess Boolean          @default(false) @map("all_clients_access")
+  invitedAt        DateTime?        @map("invited_at") @db.Timestamptz(3)
+  joinedAt         DateTime?        @map("joined_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  agency                  Agency                   @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // The role must belong to the same agency (composite FK).
+  role                    Role                     @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
+  clientMemberships       ClientMembership[]
+  notificationPreferences NotificationPreference[]
+
+  @@unique([agencyId, userId])
+  // Target for composite foreign keys from client memberships and notification preferences.
+  @@index([userId])
+  @@index([roleId])
+  @@map("agency_memberships")
+}
+
+// A named bundle of permissions, owned by one agency (defaults are cloned per agency on creation).
+model Role {
+  id          String    @id @default(uuid())
+  agencyId    String    @map("agency_id")
+  scope       RoleScope
+  key         String
+  name        String
+  description String?
+  // System roles (admin/member/viewer ...) cannot be deleted from the UI.
+  isSystem    Boolean   @default(false) @map("is_system")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  clientMemberships ClientMembership[]
+  agencyMemberships AgencyMembership[]
+  rolePermissions   RolePermission[]
+
+  @@unique([agencyId, scope, key])
+  // Target of composite FKs so a membership can only use its own agency's roles.
+  @@unique([id, agencyId])
+  @@map("roles")
+}
+
+// Global catalogue of permission keys, e.g. "content.approve". Seeded from code.
+model Permission {
+  id              String           @id @default(uuid())
+  key             String           @unique
+  description     String
+  category        String
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}

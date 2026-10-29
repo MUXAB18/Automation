@@ -6,7 +6,7 @@ import { defineConfig } from "prisma/config";
 config({ path: path.resolve(import.meta.dirname, "../../.env"), quiet: true });
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema: "prisma/schema",
   migrations: {
     path: "prisma/migrations",
     seed: "tsx prisma/seed.ts",

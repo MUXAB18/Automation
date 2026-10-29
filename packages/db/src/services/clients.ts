@@ -1,6 +1,6 @@
 import { forAdmin, getActorDb, getClientContext, requirePermission, type Actor } from "../access";
 import { recordAudit } from "../audit";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../errors";
 import type { ClientStatus } from "../generated/enums";
 import { canCreateClient } from "../permissions";
 import {
@@ -82,10 +82,29 @@ export async function getOverviewStats(actor: Actor, clientId?: string) {
   return { total: active + paused + archived, active, paused, archived };
 }
 
+/** Which agency a new client belongs to: the given one, or the only one that exists. */
+async function resolveAgencyId(db: ReturnType<typeof forAdmin>, requested: string | undefined) {
+  if (requested) {
+    const agency = await db.agency.findUnique({ where: { id: requested }, select: { id: true } });
+    if (!agency) throw new NotFoundError("Agency not found");
+    return agency.id;
+  }
+  const agencies = await db.agency.findMany({
+    where: { status: "active" },
+    select: { id: true },
+    take: 2,
+  });
+  if (agencies.length !== 1) {
+    throw new ValidationError({ agencyId: ["Choose an agency for this client"] });
+  }
+  return agencies[0]!.id;
+}
+
 export async function createClient(actor: Actor, input: CreateClientInput) {
   if (!canCreateClient(actor)) throw new ForbiddenError("Only admins can create clients");
   const data = parseInput(createClientSchema, input);
   const db = forAdmin(actor);
+  const agencyId = await resolveAgencyId(db, data.agencyId);
   const baseSlug = data.slug ?? slugify(data.name);
 
   // Auto-generated slugs get a numeric suffix on collision; explicit ones are a conflict.
@@ -95,6 +114,7 @@ export async function createClient(actor: Actor, input: CreateClientInput) {
       return await db.$transaction(async (tx) => {
         const client = await tx.client.create({
           data: {
+            agencyId,
             name: data.name,
             slug,
             reportEmail: data.reportEmail ?? null,
@@ -103,7 +123,7 @@ export async function createClient(actor: Actor, input: CreateClientInput) {
         });
         if (data.primaryDomain) {
           await tx.website.create({
-            data: { clientId: client.id, domain: data.primaryDomain, isPrimary: true },
+            data: { agencyId, clientId: client.id, domain: data.primaryDomain, isPrimary: true },
           });
         }
         await recordAudit(tx, {
@@ -189,7 +209,7 @@ export async function addWebsite(actor: Actor, clientId: string, input: AddWebsi
       if (isPrimary)
         await tx.website.updateMany({ where: { isPrimary: true }, data: { isPrimary: false } });
       const website = await tx.website.create({
-        data: { clientId, domain: data.domain, isPrimary },
+        data: { agencyId: ctx.agencyId, clientId, domain: data.domain, isPrimary },
       });
       await recordAudit(tx, {
         actorUserId: actor.userId,

@@ -1,0 +1,184 @@
+// ---- Approval and publishing ----------------------------------------------------------------
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  changes_requested
+  cancelled
+  expired
+}
+
+enum ApprovalEventType {
+  requested
+  approved
+  rejected
+  changes_requested
+  commented
+  reassigned
+  cancelled
+  expired
+}
+
+enum PublishingJobStatus {
+  queued
+  scheduled
+  publishing
+  succeeded
+  failed
+  cancelled
+}
+
+enum PublishedPostStatus {
+  live
+  removed
+  hidden
+}
+
+// A human decision about ONE specific version of a content item.
+model ContentApproval {
+  id               String         @id @default(uuid())
+  agencyId         String         @map("agency_id")
+  clientId         String         @map("client_id")
+  contentItemId    String         @map("content_item_id")
+  contentVersionId String         @map("content_version_id")
+  status           ApprovalStatus @default(pending)
+  requestedById    String?        @map("requested_by_id")
+  decidedById      String?        @map("decided_by_id")
+  decisionNote     String?        @map("decision_note")
+  dueAt            DateTime?      @map("due_at") @db.Timestamptz(3)
+  decidedAt        DateTime?      @map("decided_at") @db.Timestamptz(3)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client         Client         @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  contentItem    ContentItem    @relation(fields: [contentItemId, clientId], references: [id, clientId], onDelete: Cascade)
+  // Version must belong to this item AND this client.
+  contentVersion ContentVersion @relation(fields: [contentVersionId, contentItemId, clientId], references: [id, contentItemId, clientId], onDelete: Restrict)
+  requestedBy    User?          @relation("ApprovalRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedBy      User?          @relation("ApprovalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  // CHECK: approved/rejected/changes_requested rows must have decided_by + decided_at (migration).
+  approvalEvents ApprovalEvent[]
+  publishingJobs PublishingJob[]
+
+  @@unique([id, clientId])
+  @@unique([id, contentVersionId, clientId])
+  @@index([clientId, status])
+  @@index([contentItemId])
+  @@index([contentVersionId])
+  @@map("content_approvals")
+}
+
+// Append-only trail of everything that happened to an approval.
+model ApprovalEvent {
+  id                String            @id @default(uuid())
+  agencyId          String            @map("agency_id")
+  clientId          String            @map("client_id")
+  contentApprovalId String            @map("content_approval_id")
+  actorId           String?           @map("actor_id")
+  type              ApprovalEventType
+  note              String?
+  metadata          Json?             @db.JsonB
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client          Client          @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  contentApproval ContentApproval @relation(fields: [contentApprovalId, clientId], references: [id, clientId], onDelete: Cascade)
+  actor           User?           @relation("ApprovalEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([contentApprovalId, createdAt])
+  @@index([clientId])
+  @@map("approval_events")
+}
+
+// Publishing requires an APPROVED approval for exactly this version. A trigger (migration) rejects
+// jobs whose approval is not approved or is for a different version.
+model PublishingJob {
+  id                   String              @id @default(uuid())
+  agencyId             String              @map("agency_id")
+  clientId             String              @map("client_id")
+  contentItemId        String              @map("content_item_id")
+  contentVersionId     String              @map("content_version_id")
+  contentApprovalId    String              @map("content_approval_id")
+  integrationAccountId String              @map("integration_account_id")
+  status               PublishingJobStatus @default(queued)
+  scheduledFor         DateTime?           @map("scheduled_for") @db.Timestamptz(3)
+  attempts             Int                 @default(0)
+  lastError            String?             @map("last_error")
+  requestedById        String?             @map("requested_by_id")
+  startedAt            DateTime?           @map("started_at") @db.Timestamptz(3)
+  finishedAt           DateTime?           @map("finished_at") @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  contentItem        ContentItem        @relation(fields: [contentItemId, clientId], references: [id, clientId], onDelete: Restrict)
+  contentVersion     ContentVersion     @relation(fields: [contentVersionId, contentItemId, clientId], references: [id, contentItemId, clientId], onDelete: Restrict)
+  contentApproval    ContentApproval    @relation(fields: [contentApprovalId, contentVersionId, clientId], references: [id, contentVersionId, clientId], onDelete: Restrict)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Restrict)
+  requestedBy        User?              @relation("PublishRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  // One job per approved version per destination: a retry reuses the job, never double-posts.
+  publishedPost PublishedPost?
+
+  @@unique([contentVersionId, integrationAccountId])
+  @@unique([id, clientId])
+  @@index([clientId, status, scheduledFor])
+  @@map("publishing_jobs")
+}
+
+model PublishedPost {
+  id                   String              @id @default(uuid())
+  agencyId             String              @map("agency_id")
+  clientId             String              @map("client_id")
+  publishingJobId      String              @map("publishing_job_id")
+  contentItemId        String              @map("content_item_id")
+  integrationAccountId String              @map("integration_account_id")
+  // Provider's id for the post. Unique per account: prevents duplicate provider records.
+  externalPostId       String              @map("external_post_id")
+  permalink            String?
+  status               PublishedPostStatus @default(live)
+  publishedAt          DateTime            @map("published_at") @db.Timestamptz(3)
+  removedAt            DateTime?           @map("removed_at") @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client              Client               @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  publishingJob       PublishingJob        @relation(fields: [publishingJobId, clientId], references: [id, clientId], onDelete: Restrict)
+  contentItem         ContentItem          @relation(fields: [contentItemId, clientId], references: [id, clientId], onDelete: Restrict)
+  integrationAccount  IntegrationAccount   @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Restrict)
+  postMetricSnapshots PostMetricSnapshot[]
+
+  @@unique([publishingJobId, clientId])
+  @@unique([integrationAccountId, externalPostId])
+  @@unique([id, clientId])
+  @@index([clientId, publishedAt(sort: Desc)])
+  @@index([contentItemId])
+  @@map("published_posts")
+}
+
+// Append-only engagement readings of a published post.
+model PostMetricSnapshot {
+  id              String   @id @default(uuid())
+  agencyId        String   @map("agency_id")
+  clientId        String   @map("client_id")
+  publishedPostId String   @map("published_post_id")
+  syncRunId       String?  @map("sync_run_id")
+  impressions     BigInt   @default(0)
+  reach           BigInt   @default(0)
+  likes           Int      @default(0)
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+  clicks          Int      @default(0)
+  engagementRate  Decimal? @map("engagement_rate") @db.Decimal(7, 4)
+  raw             Json?    @db.JsonB
+  capturedAt      DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  client        Client        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  publishedPost PublishedPost @relation(fields: [publishedPostId, clientId], references: [id, clientId], onDelete: Cascade)
+  syncRun       SyncRun?      @relation(fields: [syncRunId, clientId], references: [id, clientId], onDelete: Restrict)
+
+  @@unique([syncRunId, publishedPostId])
+  @@index([clientId, publishedPostId, capturedAt(sort: Desc)])
+  @@map("post_metric_snapshots")
+}

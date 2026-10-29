@@ -1,0 +1,114 @@
+// ---- Notifications, audit trail and worker bookkeeping ---------------------------------------
+
+enum NotificationChannel {
+  in_app
+  email
+}
+
+enum NotificationDigest {
+  immediate
+  daily
+  weekly
+  off
+}
+
+enum ActorType {
+  user
+  system
+  automation
+}
+
+enum JobRunStatus {
+  running
+  success
+  failed
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  agencyId   String    @map("agency_id")
+  clientId   String?   @map("client_id")
+  userId     String    @map("user_id")
+  // e.g. "approval.requested", "sync.failed", "report.ready"
+  type       String
+  title      String
+  body       String?
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id")
+  data       Json?     @db.JsonB
+  readAt     DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client Client? @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  user   User    @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([clientId])
+  @@map("notifications")
+}
+
+// A user's delivery preferences inside one agency (per event type and channel).
+model NotificationPreference {
+  id        String              @id @default(uuid())
+  agencyId  String              @map("agency_id")
+  userId    String              @map("user_id")
+  eventType String              @map("event_type")
+  channel   NotificationChannel
+  digest    NotificationDigest  @default(immediate)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // The user must belong to the agency.
+  agencyMembership AgencyMembership @relation(fields: [agencyId, userId], references: [agencyId, userId], onDelete: Cascade)
+
+  @@unique([agencyId, userId, eventType, channel])
+  @@map("notification_preferences")
+}
+
+// Append-only. `client_id` is deliberately NOT a foreign key so history survives a client purge;
+// a trigger (migration) checks that the client belongs to the row's agency on insert.
+// Application code only ever inserts rows (no updated_at on purpose).
+model AuditLog {
+  id          String    @id @default(uuid())
+  agencyId    String?   @map("agency_id")
+  clientId    String?   @map("client_id")
+  actorUserId String?   @map("actor_user_id")
+  actorType   ActorType @default(user) @map("actor_type")
+  action      String
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id")
+  before      Json?     @db.JsonB
+  after       Json?     @db.JsonB
+  requestId   String?   @map("request_id")
+  ipAddress   String?   @map("ip_address")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  agency Agency? @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  actor  User?   @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId, createdAt(sort: Desc)])
+  @@index([clientId, createdAt(sort: Desc)])
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@map("audit_log")
+}
+
+// One execution of a scheduled worker job (heartbeat etc.). `client_id` null = platform-level job.
+model JobRun {
+  id         String       @id @default(uuid())
+  jobName    String       @map("job_name")
+  agencyId   String?      @map("agency_id")
+  clientId   String?      @map("client_id")
+  status     JobRunStatus @default(running)
+  startedAt  DateTime     @default(now()) @map("started_at")
+  finishedAt DateTime?    @map("finished_at")
+  error      String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  client Client? @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+
+  @@index([clientId, startedAt(sort: Desc)])
+  @@index([jobName, startedAt(sort: Desc)])
+  @@map("job_runs")
+}

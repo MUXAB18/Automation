@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ScopeViolationError } from "./errors";
-import { TENANT_MODELS, scopeArgs } from "./scope";
+import { AGENCY_MODELS, GLOBAL_MODELS, TENANT_MODELS, scopeArgs } from "./scope";
 
 const one = { clientIds: ["c1"] };
 const many = { clientIds: ["c1", "c2"] };
@@ -111,17 +111,75 @@ describe("scopeArgs", () => {
   });
 });
 
+function readModels() {
+  const dir = path.resolve(import.meta.dirname, "../prisma/schema");
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".prisma"))
+    .flatMap((f) => [
+      ...readFileSync(path.join(dir, f), "utf8").matchAll(/^model (\w+) \{\n([\s\S]*?)^\}/gm),
+    ])
+    .map(([, name, body]) => ({ name: name!, body: body ?? "" }));
+}
+
 describe("tenant model registry", () => {
+  const models = readModels();
+
   it("covers every model that has a clientId column", () => {
-    const schema = readFileSync(
-      path.resolve(import.meta.dirname, "../prisma/schema.prisma"),
-      "utf8",
+    const owned = models.filter((m) => /^\s*clientId\s/m.test(m.body));
+    expect(owned.length).toBeGreaterThan(40);
+    for (const { name } of owned)
+      expect(TENANT_MODELS, `${name} must be in TENANT_MODELS`).toHaveProperty(name);
+  });
+
+  it("classifies every model as tenant, agency-level or global (no unclassified models)", () => {
+    const known = new Set([
+      ...Object.keys(TENANT_MODELS),
+      ...Object.keys(AGENCY_MODELS),
+      ...GLOBAL_MODELS,
+    ]);
+    for (const { name } of models)
+      expect(known, `${name} is not classified in scope.ts`).toContain(name);
+    for (const name of known)
+      expect(
+        models.map((m) => m.name),
+        `${name} no longer exists`,
+      ).toContain(name);
+  });
+
+  it("gives every client-owned model an agencyId so the composite client FK can be enforced", () => {
+    for (const { name, body } of models) {
+      if (TENANT_MODELS[name] === "clientId" && !["AuditLog", "JobRun"].includes(name)) {
+        expect(body, `${name} must have agencyId`).toMatch(/^\s*agencyId\s/m);
+      }
+    }
+  });
+});
+
+describe("agency-level models", () => {
+  it("are filtered through agencies that contain a scoped client", () => {
+    const args = scopeArgs("Role", "findMany", { where: { key: "admin" } }, one) as {
+      where: { AND: unknown[] };
+    };
+    expect(args.where.AND).toContainEqual({
+      agency: { clients: { some: { id: { in: ["c1"] } } } },
+    });
+  });
+
+  it("follow nested paths", () => {
+    const args = scopeArgs("NotificationPreference", "findMany", undefined, one) as {
+      where: { AND: unknown[] };
+    };
+    expect(args.where.AND).toContainEqual({
+      agencyMembership: { agency: { clients: { some: { id: { in: ["c1"] } } } } },
+    });
+  });
+
+  it("cannot be created or re-parented from a client scope", () => {
+    expect(() => scopeArgs("Role", "create", { data: { key: "x" } }, one)).toThrow(
+      ScopeViolationError,
     );
-    const owned = [...schema.matchAll(/model (\w+) \{([^}]*)\}/g)]
-      .filter(([, , body]) => /^\s*clientId\s/m.test(body ?? ""))
-      .map(([, name]) => name);
-    expect(owned.length).toBeGreaterThan(0);
-    for (const model of owned)
-      expect(TENANT_MODELS, `${model} must be in TENANT_MODELS`).toHaveProperty(model!);
+    expect(() =>
+      scopeArgs("Role", "update", { where: { id: "r" }, data: { agencyId: "a2" } }, one),
+    ).toThrow(ScopeViolationError);
   });
 });
