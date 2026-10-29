@@ -38,7 +38,7 @@ describe("client visibility", () => {
     const member = await makeUser();
     const mine = await makeClient("Mine");
     const other = await makeClient("Other");
-    await addMember(member, mine.id, "member");
+    await addMember(member, mine.id, "seo_manager");
 
     const visible = await listClients(member);
     expect(visible.map((c) => c.id)).toEqual([mine.id]);
@@ -69,7 +69,7 @@ describe("client visibility", () => {
     const member = await makeUser();
     const mine = await makeClient("Mine");
     const other = await makeClient("Other");
-    await addMember(member, mine.id, "member");
+    await addMember(member, mine.id, "seo_manager");
     expect(await listClients(member, { clientId: mine.id })).toHaveLength(1);
     await expect(listClients(member, { clientId: other.id })).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -177,8 +177,8 @@ describe("updateClient", () => {
     const member = await makeUser();
     const viewer = await makeUser();
     const c = await createClient(admin, { name: "Acme" });
-    await addMember(member, c.id, "member");
-    await addMember(viewer, c.id, "viewer");
+    await addMember(member, c.id, "seo_manager");
+    await addMember(viewer, c.id, "reviewer");
     const input = { name: "Acme 2", slug: "acme" };
     await expect(updateClient(viewer, c.id, input)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(updateClient(member, c.id, input)).resolves.toMatchObject({ name: "Acme 2" });
@@ -219,7 +219,7 @@ describe("setClientStatus", () => {
     const admin = await makeUser(true);
     const member = await makeUser();
     const c = await createClient(admin, { name: "Acme" });
-    await addMember(member, c.id, "member");
+    await addMember(member, c.id, "seo_manager");
     await expect(setClientStatus(member, c.id, "paused")).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
@@ -262,7 +262,7 @@ describe("websites", () => {
     const admin = await makeUser(true);
     const viewer = await makeUser();
     const c = await createClient(admin, { name: "Acme" });
-    await addMember(viewer, c.id, "viewer");
+    await addMember(viewer, c.id, "reviewer");
     await expect(addWebsite(viewer, c.id, { domain: "x.com" })).rejects.toBeInstanceOf(
       ForbiddenError,
     );
@@ -295,7 +295,7 @@ describe("agencies", () => {
     const other = await makeAgency("Other");
     const mine = await makeClient("Mine");
     const theirs = await makeClient("Theirs", "theirs", other.id);
-    await addAgencyStaff(staff, await getDefaultAgencyId(), "admin", true);
+    await addAgencyStaff(staff, await getDefaultAgencyId(), "agency_admin", true);
 
     expect((await listClients(staff)).map((c) => c.id)).toEqual([mine.id]);
     await expect(getClient(staff, theirs.id)).rejects.toBeInstanceOf(NotFoundError);
@@ -306,7 +306,7 @@ describe("agencies", () => {
   it("does not let agency staff without all-clients access see unassigned clients", async () => {
     const staff = await makeUser();
     const client = await makeClient("Mine");
-    await addAgencyStaff(staff, await getDefaultAgencyId(), "admin", false);
+    await addAgencyStaff(staff, await getDefaultAgencyId(), "agency_admin", false);
     expect(await listClients(staff)).toEqual([]);
     await expect(getClient(staff, client.id)).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -314,7 +314,7 @@ describe("agencies", () => {
   it("ignores suspended memberships", async () => {
     const member = await makeUser();
     const client = await makeClient("Mine");
-    const membership = await addMember(member, client.id, "admin");
+    const membership = await addMember(member, client.id, "agency_admin");
     await prisma().clientMembership.update({
       where: { id: membership.id },
       data: { status: "suspended" },

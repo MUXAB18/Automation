@@ -1,5 +1,6 @@
 export * from "./access";
 export * from "./audit";
+export * from "./authorize";
 export * from "./errors";
 export * from "./permissions";
 export * from "./rbac";
@@ -14,9 +15,11 @@ export {
 } from "./scope";
 export * from "./services/clients";
 export * from "./services/job-runs";
+export * from "./services/team";
 export {
   ActorType,
   AgencyStatus,
+  InvitationStatus,
   ClientStatus,
   JobRunStatus,
   MembershipStatus,

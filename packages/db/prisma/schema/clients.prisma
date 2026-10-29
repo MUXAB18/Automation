@@ -92,6 +92,7 @@ model Client {
   backlinkSnapshots    BacklinkSnapshot[]
   websitePages         WebsitePage[]
   tasks                Task[]
+  invitations          Invitation[]
   taskDependencies     TaskDependency[]
   taskComments         TaskComment[]
   taskAttachments      TaskAttachment[]
@@ -106,25 +107,24 @@ model Client {
 }
 
 // Access of one user to one client. The user must already be a member of the client's agency
-// and the role must be one of that agency's roles (both enforced by composite FKs).
+// (composite FK). Roles are attached through client_membership_roles (a user can hold several).
 model ClientMembership {
   id        String           @id @default(uuid())
   agencyId  String           @map("agency_id")
   clientId  String           @map("client_id")
   userId    String           @map("user_id")
-  roleId    String           @map("role_id")
   status    MembershipStatus @default(active)
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
-  client             Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
-  agencyMembership   AgencyMembership    @relation(fields: [agencyId, userId], references: [agencyId, userId], onDelete: Cascade)
-  role               Role                @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
+  client             Client                 @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  agencyMembership   AgencyMembership       @relation(fields: [agencyId, userId], references: [agencyId, userId], onDelete: Cascade)
   projectMemberships ProjectMembership[]
+  roles              ClientMembershipRole[]
 
   @@unique([userId, clientId])
+  @@unique([id, agencyId])
   @@index([clientId])
-  @@index([roleId])
   @@map("client_memberships")
 }
 

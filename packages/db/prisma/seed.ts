@@ -2,7 +2,7 @@ import path from "node:path";
 import { config } from "dotenv";
 import { hashPassword } from "better-auth/crypto";
 import { loadEnv, seedEnvSchema } from "@automation/config";
-import { provisionAgencyRoles, syncRbac } from "../src/rbac";
+import { provisionAgencyRoles, syncRbac, type RoleKey } from "../src/rbac";
 import { createPrismaClient, type PrismaClient } from "../src/unsafe";
 
 config({ path: path.resolve(import.meta.dirname, "../../../.env"), quiet: true });
@@ -219,6 +219,144 @@ async function seedSampleData(prisma: PrismaClient, ids: SampleIds) {
     },
   });
   console.log("Sample data ready");
+  return project;
+}
+
+/** Give a user an agency seat with exactly these roles (idempotent). */
+async function grantAgencyRoles(
+  prisma: PrismaClient,
+  agencyId: string,
+  userId: string,
+  roleKeys: RoleKey[],
+  allClientsAccess: boolean,
+) {
+  const seat = await prisma.agencyMembership.upsert({
+    where: { agencyId_userId: { agencyId, userId } },
+    update: { allClientsAccess },
+    create: { agencyId, userId, allClientsAccess, joinedAt: new Date() },
+  });
+  const roles = await prisma.role.findMany({ where: { agencyId, key: { in: roleKeys } } });
+  await prisma.agencyMembershipRole.createMany({
+    data: roles.map((r) => ({ agencyId, agencyMembershipId: seat.id, roleId: r.id })),
+    skipDuplicates: true,
+  });
+  return seat;
+}
+
+async function ensureUser(prisma: PrismaClient, email: string, name: string, password: string) {
+  let user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    user = await prisma.user.create({ data: { email, name, emailVerified: true } });
+    await prisma.account.create({
+      data: {
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        password: await hashPassword(password),
+      },
+    });
+  }
+  return user;
+}
+
+/** Hosts that are plainly a developer machine; dev users are refused anywhere else. */
+const isLocalDatabase = (url: string) =>
+  ["localhost", "127.0.0.1", "[::1]", "host.docker.internal"].includes(new URL(url).hostname);
+
+/**
+ * Development-only sample users, one per role, so every permission can be tried by signing in.
+ * Refused in production or against a non-local database, and only created when
+ * SEED_DEV_USER_PASSWORD is set (the password is never in the repository).
+ */
+async function seedDevUsers(
+  prisma: PrismaClient,
+  env: { DATABASE_URL: string; SEED_DEV_USER_PASSWORD?: string },
+  ids: { agencyId: string; clientId: string; projectId: string },
+) {
+  if (!env.SEED_DEV_USER_PASSWORD) {
+    console.log("Dev users skipped (set SEED_DEV_USER_PASSWORD to create one user per role)");
+    return;
+  }
+  if (process.env.NODE_ENV === "production" || !isLocalDatabase(env.DATABASE_URL)) {
+    throw new Error(
+      "Refusing to create development users outside a local, non-production database",
+    );
+  }
+  const password = env.SEED_DEV_USER_PASSWORD;
+  const staff: [string, string, RoleKey][] = [
+    ["agency.admin@example.test", "Dev Agency Admin", "agency_admin"],
+    ["seo.manager@example.test", "Dev SEO Manager", "seo_manager"],
+    ["seo.specialist@example.test", "Dev SEO Specialist", "seo_specialist"],
+    ["content.writer@example.test", "Dev Content Writer", "content_writer"],
+    ["social.manager@example.test", "Dev Social Media Manager", "social_media_manager"],
+    ["reviewer@example.test", "Dev Reviewer", "reviewer"],
+  ];
+  for (const [email, name, role] of staff) {
+    const user = await ensureUser(prisma, email, name, password);
+    await grantAgencyRoles(prisma, ids.agencyId, user.id, [role], true);
+  }
+  // A user with two roles.
+  const multi = await ensureUser(prisma, "multi.role@example.test", "Dev Multi-role", password);
+  await grantAgencyRoles(
+    prisma,
+    ids.agencyId,
+    multi.id,
+    ["seo_specialist", "content_writer"],
+    true,
+  );
+
+  // An external client user: sees only this client, and only projects they belong to.
+  const clientUser = await ensureUser(
+    prisma,
+    "client.user@example.test",
+    "Dev Client User",
+    password,
+  );
+  await grantAgencyRoles(prisma, ids.agencyId, clientUser.id, [], false);
+  const seat = await prisma.clientMembership.upsert({
+    where: { userId_clientId: { userId: clientUser.id, clientId: ids.clientId } },
+    update: {},
+    create: { agencyId: ids.agencyId, clientId: ids.clientId, userId: clientUser.id },
+  });
+  const clientRole = await prisma.role.findFirstOrThrow({
+    where: { agencyId: ids.agencyId, key: "client" },
+  });
+  await prisma.clientMembershipRole.createMany({
+    data: [{ agencyId: ids.agencyId, clientMembershipId: seat.id, roleId: clientRole.id }],
+    skipDuplicates: true,
+  });
+  await prisma.projectMembership.upsert({
+    where: { projectId_userId: { projectId: ids.projectId, userId: clientUser.id } },
+    update: {},
+    create: {
+      agencyId: ids.agencyId,
+      clientId: ids.clientId,
+      projectId: ids.projectId,
+      userId: clientUser.id,
+      role: "viewer",
+    },
+  });
+
+  // A second agency with its own admin and client, to try cross-tenant access by hand.
+  const other = await prisma.agency.upsert({
+    where: { slug: "other-agency" },
+    update: {},
+    create: { name: "Other Agency", slug: "other-agency" },
+  });
+  await provisionAgencyRoles(prisma, other.id);
+  const outsider = await ensureUser(
+    prisma,
+    "outsider.admin@example.test",
+    "Dev Outsider Admin",
+    password,
+  );
+  await grantAgencyRoles(prisma, other.id, outsider.id, ["agency_admin"], true);
+  await prisma.client.upsert({
+    where: { agencyId_slug: { agencyId: other.id, slug: "other-client" } },
+    update: {},
+    create: { agencyId: other.id, name: "Other Client", slug: "other-client" },
+  });
+  console.log("Dev users ready (8 users; second agency 'Other Agency')");
 }
 
 async function main() {
@@ -262,20 +400,7 @@ async function main() {
       create: { name: "Default Agency", slug: "default-agency" },
     });
     await provisionAgencyRoles(prisma, agency.id);
-    const ownerRole = await prisma.role.findUniqueOrThrow({
-      where: { agencyId_scope_key: { agencyId: agency.id, scope: "agency", key: "owner" } },
-    });
-    await prisma.agencyMembership.upsert({
-      where: { agencyId_userId: { agencyId: agency.id, userId: admin.id } },
-      update: {},
-      create: {
-        agencyId: agency.id,
-        userId: admin.id,
-        roleId: ownerRole.id,
-        allClientsAccess: true,
-        joinedAt: new Date(),
-      },
-    });
+    await grantAgencyRoles(prisma, agency.id, admin.id, ["agency_admin"], true);
 
     const client = await prisma.client.upsert({
       where: { agencyId_slug: { agencyId: agency.id, slug: "sarj-worldwide" } },
@@ -301,11 +426,16 @@ async function main() {
 
     await seedReferenceData(prisma);
     if (process.env.NODE_ENV !== "production" && process.env.SEED_SAMPLE_DATA !== "false") {
-      await seedSampleData(prisma, {
+      const project = await seedSampleData(prisma, {
         agencyId: agency.id,
         clientId: client.id,
         websiteId: website.id,
         adminId: admin.id,
+      });
+      await seedDevUsers(prisma, env, {
+        agencyId: agency.id,
+        clientId: client.id,
+        projectId: project.id,
       });
     }
   } finally {

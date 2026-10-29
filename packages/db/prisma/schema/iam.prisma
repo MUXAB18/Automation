@@ -12,6 +12,13 @@ enum MembershipStatus {
   suspended
 }
 
+enum InvitationStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
 enum RoleScope {
   agency
   client
@@ -54,6 +61,8 @@ model User {
   reportApprovers         Report[]             @relation("ReportApprover")
   auditTriggers           SiteAudit[]          @relation("AuditTrigger")
   issueChangers           SeoIssueHistory[]    @relation("IssueChanger")
+  invitationsSent         Invitation[]         @relation("InvitationSender")
+  invitationsAccepted     Invitation[]         @relation("InvitationAcceptor")
   taskAssignees           Task[]               @relation("TaskAssignee")
   taskReporters           Task[]               @relation("TaskReporter")
   taskCommentAuthors      TaskComment[]        @relation("TaskCommentAuthor")
@@ -129,6 +138,7 @@ model Agency {
   roles             Role[]
   auditLogs         AuditLog[]
   reportTemplates   ReportTemplate[]
+  invitations       Invitation[]
 
   @@map("agencies")
 }
@@ -139,7 +149,6 @@ model AgencyMembership {
   id               String           @id @default(uuid())
   agencyId         String           @map("agency_id")
   userId           String           @map("user_id")
-  roleId           String           @map("role_id")
   status           MembershipStatus @default(active)
   allClientsAccess Boolean          @default(false) @map("all_clients_access")
   invitedAt        DateTime?        @map("invited_at") @db.Timestamptz(3)
@@ -149,15 +158,14 @@ model AgencyMembership {
 
   agency                  Agency                   @relation(fields: [agencyId], references: [id], onDelete: Restrict)
   user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // The role must belong to the same agency (composite FK).
-  role                    Role                     @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
   clientMemberships       ClientMembership[]
   notificationPreferences NotificationPreference[]
+  roles                   AgencyMembershipRole[]
 
+  // Targets of composite foreign keys (client memberships, notification preferences, role links).
   @@unique([agencyId, userId])
-  // Target for composite foreign keys from client memberships and notification preferences.
+  @@unique([id, agencyId])
   @@index([userId])
-  @@index([roleId])
   @@map("agency_memberships")
 }
 
@@ -174,10 +182,11 @@ model Role {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  clientMemberships ClientMembership[]
-  agencyMemberships AgencyMembership[]
-  rolePermissions   RolePermission[]
+  agency                Agency                 @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  rolePermissions       RolePermission[]
+  agencyMembershipRoles AgencyMembershipRole[]
+  clientMembershipRoles ClientMembershipRole[]
+  invitationRoles       InvitationRole[]
 
   @@unique([agencyId, scope, key])
   // Target of composite FKs so a membership can only use its own agency's roles.
@@ -208,4 +217,80 @@ model RolePermission {
   @@id([roleId, permissionId])
   @@index([permissionId])
   @@map("role_permissions")
+}
+
+// Roles held by an agency seat. A user can hold several; permissions are the union.
+// Only agency-scope roles may be attached here (trigger in the migration).
+model AgencyMembershipRole {
+  agencyId           String   @map("agency_id")
+  agencyMembershipId String   @map("agency_membership_id")
+  roleId             String   @map("role_id")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  agencyMembership AgencyMembership @relation(fields: [agencyMembershipId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  // The role must belong to the same agency as the membership (composite FK).
+  role             Role             @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
+
+  @@id([agencyMembershipId, roleId])
+  @@index([roleId])
+  @@map("agency_membership_roles")
+}
+
+// Roles a user holds on one specific client (any role of the same agency, including "client").
+model ClientMembershipRole {
+  agencyId           String   @map("agency_id")
+  clientMembershipId String   @map("client_membership_id")
+  roleId             String   @map("role_id")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clientMembership ClientMembership @relation(fields: [clientMembershipId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  role             Role             @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
+
+  @@id([clientMembershipId, roleId])
+  @@index([roleId])
+  @@map("client_membership_roles")
+}
+
+// An emailed invitation to join an agency (or one client of it). Only the SHA-256 hash of the
+// token is stored; the plaintext token exists once, in the invitation link.
+model Invitation {
+  id               String           @id @default(uuid())
+  agencyId         String           @map("agency_id")
+  clientId         String?          @map("client_id")
+  // Always lower-case (CHECK in the migration).
+  email            String
+  tokenHash        String           @unique @map("token_hash") @db.Char(64)
+  status           InvitationStatus @default(pending)
+  allClientsAccess Boolean          @default(false) @map("all_clients_access")
+  invitedById      String?          @map("invited_by_id")
+  acceptedById     String?          @map("accepted_by_id")
+  expiresAt        DateTime         @map("expires_at") @db.Timestamptz(3)
+  acceptedAt       DateTime?        @map("accepted_at") @db.Timestamptz(3)
+  revokedAt        DateTime?        @map("revoked_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  agency     Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  client     Client?          @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  invitedBy  User?            @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedBy User?            @relation("InvitationAcceptor", fields: [acceptedById], references: [id], onDelete: SetNull)
+  roles      InvitationRole[]
+
+  @@unique([id, agencyId])
+  @@index([agencyId, status])
+  @@index([email])
+  @@map("invitations")
+}
+
+model InvitationRole {
+  agencyId     String @map("agency_id")
+  invitationId String @map("invitation_id")
+  roleId       String @map("role_id")
+
+  invitation Invitation @relation(fields: [invitationId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId, agencyId], references: [id, agencyId], onDelete: Restrict)
+
+  @@id([invitationId, roleId])
+  @@index([roleId])
+  @@map("invitation_roles")
 }

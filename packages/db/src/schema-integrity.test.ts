@@ -97,38 +97,63 @@ describe("composite tenant keys", () => {
     ).rejects.toThrow();
   });
 
-  it("only lets agency members become client members, with a client-scope role of their agency", async () => {
+  it("only lets agency members become client members, using roles of their own agency", async () => {
     const { agencyA, agencyB, a } = await twoTenants();
     const outsider = await makeUser();
-    const clientRoleB = await prisma().role.findUniqueOrThrow({
-      where: { agencyId_scope_key: { agencyId: agencyB.id, scope: "client", key: "viewer" } },
-    });
+    const seat = (userId: string) => ({ agencyId: agencyA.id, clientId: a.id, userId });
+    // Not an agency member: the composite FK to agency_memberships rejects it.
     await expect(
-      prisma().clientMembership.create({
-        data: {
-          agencyId: agencyA.id,
-          clientId: a.id,
-          userId: outsider.userId,
-          roleId: clientRoleB.id,
-        },
-      }),
+      prisma().clientMembership.create({ data: seat(outsider.userId) }),
     ).rejects.toThrow();
 
-    await addAgencyStaff(outsider, agencyA.id);
-    const agencyRole = await prisma().role.findUniqueOrThrow({
-      where: { agencyId_scope_key: { agencyId: agencyA.id, scope: "agency", key: "member" } },
+    await prisma().agencyMembership.create({
+      data: { agencyId: agencyA.id, userId: outsider.userId },
+    });
+    const membership = await prisma().clientMembership.create({ data: seat(outsider.userId) });
+    const roleB = await prisma().role.findFirstOrThrow({
+      where: { agencyId: agencyB.id, key: "reviewer" },
+    });
+    // A role from another agency cannot be attached (composite FK on (role_id, agency_id)).
+    await expect(
+      prisma().clientMembershipRole.create({
+        data: { agencyId: agencyA.id, clientMembershipId: membership.id, roleId: roleB.id },
+      }),
+    ).rejects.toThrow();
+    const roleA = await prisma().role.findFirstOrThrow({
+      where: { agencyId: agencyA.id, key: "reviewer" },
     });
     await expect(
-      prisma().clientMembership.create({
-        data: {
-          agencyId: agencyA.id,
-          clientId: a.id,
-          userId: outsider.userId,
-          roleId: agencyRole.id,
-        },
+      prisma().clientMembershipRole.create({
+        data: { agencyId: agencyA.id, clientMembershipId: membership.id, roleId: roleA.id },
       }),
-    ).rejects.toThrow(/not a client role/);
-    await expect(addMember(outsider, a.id, "viewer")).resolves.toBeTruthy();
+    ).resolves.toBeTruthy();
+  });
+
+  it("keeps the external Client role out of agency-wide seats", async () => {
+    const { agencyA } = await twoTenants();
+    const staff = await makeUser();
+    const seat = await prisma().agencyMembership.create({
+      data: { agencyId: agencyA.id, userId: staff.userId },
+    });
+    const clientRole = await prisma().role.findFirstOrThrow({
+      where: { agencyId: agencyA.id, key: "client" },
+    });
+    await expect(
+      prisma().agencyMembershipRole.create({
+        data: { agencyId: agencyA.id, agencyMembershipId: seat.id, roleId: clientRole.id },
+      }),
+    ).rejects.toThrow(/agency-scope roles/);
+  });
+
+  it("lets a user hold several roles", async () => {
+    const { agencyA } = await twoTenants();
+    const staff = await makeUser();
+    await addAgencyStaff(staff, agencyA.id, ["seo_specialist", "content_writer"]);
+    const seat = await prisma().agencyMembership.findFirstOrThrow({
+      where: { agencyId: agencyA.id, userId: staff.userId },
+      include: { roles: true },
+    });
+    expect(seat.roles).toHaveLength(2);
   });
 });
 
@@ -141,15 +166,15 @@ describe("user access triggers", () => {
     );
 
     const member = await makeUser();
-    await addMember(member, a.id, "member");
+    await addMember(member, a.id, "seo_manager");
     await expect(task(tenantA, { assigneeId: member.userId })).resolves.toBeTruthy();
 
     const staff = await makeUser();
-    await addAgencyStaff(staff, agencyA.id, "member", true);
+    await addAgencyStaff(staff, agencyA.id, "reviewer", true);
     await expect(task(tenantA, { assigneeId: staff.userId })).resolves.toBeTruthy();
 
     const staffWithoutAccess = await makeUser();
-    await addAgencyStaff(staffWithoutAccess, agencyA.id, "member", false);
+    await addAgencyStaff(staffWithoutAccess, agencyA.id, "reviewer", false);
     await expect(task(tenantA, { assigneeId: staffWithoutAccess.userId })).rejects.toThrow(
       /no access/,
     );
@@ -552,7 +577,7 @@ describe("safe deletion", () => {
   it("keeps task history when a user is removed", async () => {
     const { tenantA, a } = await twoTenants();
     const member = await makeUser();
-    await addMember(member, a.id, "member");
+    await addMember(member, a.id, "seo_manager");
     const t = await task(tenantA, { assigneeId: member.userId });
     await prisma().user.delete({ where: { id: member.userId } });
     expect((await prisma().task.findUniqueOrThrow({ where: { id: t.id } })).assigneeId).toBeNull();

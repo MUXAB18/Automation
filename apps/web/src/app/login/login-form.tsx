@@ -1,18 +1,20 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { AlertCircle, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
+import Link from "next/link";
+import { useActionState } from "react";
+import { Loader2, Mail } from "lucide-react";
+import { FormMessage } from "@/components/form-message";
+import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signInAction, type LoginState } from "./actions";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(signInAction, {});
-  const [show, setShow] = useState(false);
-
   return (
     <form action={action} className="flex flex-col gap-5">
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">Email</Label>
         <div className="relative">
@@ -32,45 +34,20 @@ export function LoginForm() {
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">Password</Label>
-        <div className="relative">
-          <Lock
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            id="password"
-            name="password"
-            type={show ? "text" : "password"}
-            autoComplete="current-password"
-            placeholder="Your password"
-            className="px-9"
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShow((v) => !v)}
-            aria-label={show ? "Hide password" : "Show password"}
-            aria-pressed={show}
-            className="absolute right-1.5 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            {show ? (
-              <EyeOff className="size-4" aria-hidden />
-            ) : (
-              <Eye className="size-4" aria-hidden />
-            )}
-          </button>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          <Link href="/forgot-password" className="text-xs text-primary hover:underline">
+            Forgot password?
+          </Link>
         </div>
+        <PasswordInput
+          id="password"
+          name="password"
+          autoComplete="current-password"
+          placeholder="Your password"
+        />
       </div>
-      {state.error ? (
-        <p
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          {state.error}
-        </p>
-      ) : null}
+      <FormMessage error={state.error} />
       <Button type="submit" disabled={pending} className="h-11 w-full">
         {pending ? (
           <>

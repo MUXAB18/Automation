@@ -1,6 +1,6 @@
 import { getUnscopedPrisma } from "../src/unsafe";
 import type { Actor } from "../src/access";
-import { provisionAgencyRoles, syncRbac } from "../src/rbac";
+import { provisionAgencyRoles, syncRbac, type RoleKey } from "../src/rbac";
 
 export const prisma = () => getUnscopedPrisma();
 
@@ -48,50 +48,55 @@ export async function makeClient(
   });
 }
 
-async function roleId(agencyId: string, scope: "agency" | "client", key: string) {
-  return (
-    await prisma().role.findUniqueOrThrow({
-      where: { agencyId_scope_key: { agencyId, scope, key } },
-    })
-  ).id;
+export async function roleId(agencyId: string, key: RoleKey) {
+  return (await prisma().role.findFirstOrThrow({ where: { agencyId, key } })).id;
 }
 
-/** Give a user a seat in an agency (needed before they can be a client member). */
+const asArray = <T>(v: T | T[]) => (Array.isArray(v) ? v : [v]);
+
+/** Give a user a seat in an agency with the given role(s) (needed before they can be a client member). */
 export async function addAgencyStaff(
   actor: Actor,
   agencyId: string,
-  key: "owner" | "admin" | "member" = "member",
+  roles: RoleKey | RoleKey[] = "reviewer",
   allClientsAccess = false,
 ) {
-  return prisma().agencyMembership.upsert({
+  const seat = await prisma().agencyMembership.upsert({
     where: { agencyId_userId: { agencyId, userId: actor.userId } },
-    update: { roleId: await roleId(agencyId, "agency", key), allClientsAccess },
-    create: {
-      agencyId,
-      userId: actor.userId,
-      roleId: await roleId(agencyId, "agency", key),
-      allClientsAccess,
-    },
+    update: { allClientsAccess },
+    create: { agencyId, userId: actor.userId, allClientsAccess },
   });
+  await prisma().agencyMembershipRole.deleteMany({ where: { agencyMembershipId: seat.id } });
+  for (const key of asArray(roles)) {
+    await prisma().agencyMembershipRole.create({
+      data: { agencyId, agencyMembershipId: seat.id, roleId: await roleId(agencyId, key) },
+    });
+  }
+  return seat;
 }
 
-/** Add a user to a client (and to the client's agency if needed). */
-export async function addMember(
-  actor: Actor,
-  clientId: string,
-  role: "admin" | "member" | "viewer",
-) {
+/** Add a user to a client with the given role(s) (and give them a bare agency seat if needed). */
+export async function addMember(actor: Actor, clientId: string, roles: RoleKey | RoleKey[]) {
   const client = await prisma().client.findUniqueOrThrow({ where: { id: clientId } });
   const existing = await prisma().agencyMembership.findUnique({
     where: { agencyId_userId: { agencyId: client.agencyId, userId: actor.userId } },
   });
-  if (!existing) await addAgencyStaff(actor, client.agencyId);
-  return prisma().clientMembership.create({
-    data: {
-      agencyId: client.agencyId,
-      clientId,
-      userId: actor.userId,
-      roleId: await roleId(client.agencyId, "client", role),
-    },
+  if (!existing) {
+    await prisma().agencyMembership.create({
+      data: { agencyId: client.agencyId, userId: actor.userId },
+    });
+  }
+  const seat = await prisma().clientMembership.create({
+    data: { agencyId: client.agencyId, clientId, userId: actor.userId },
   });
+  for (const key of asArray(roles)) {
+    await prisma().clientMembershipRole.create({
+      data: {
+        agencyId: client.agencyId,
+        clientMembershipId: seat.id,
+        roleId: await roleId(client.agencyId, key),
+      },
+    });
+  }
+  return seat;
 }

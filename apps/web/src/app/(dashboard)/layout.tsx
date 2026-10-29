@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
+import { listAgenciesWith } from "@automation/db";
 import { getActiveClient } from "@/lib/active-client";
 import { requireActor } from "@/lib/session";
 import { signOutAction } from "../login/actions";
@@ -16,6 +17,7 @@ function initials(name: string, email: string) {
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const actor = await requireActor();
   const { options, activeId } = await getActiveClient(actor);
+  const allowed = (await listAgenciesWith(actor, "agency.members")).length > 0 ? ["team"] : [];
 
   return (
     <div className="flex min-h-screen">
@@ -31,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <p className="px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Workspace
           </p>
-          <SidebarNav />
+          <SidebarNav allowed={allowed} />
         </div>
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
@@ -65,7 +67,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </form>
         </header>
         <div className="border-b border-border bg-sidebar md:hidden">
-          <SidebarNav orientation="horizontal" />
+          <SidebarNav orientation="horizontal" allowed={allowed} />
         </div>
         <main className="fade-up mx-auto w-full max-w-6xl flex-1 p-4 md:p-8">{children}</main>
       </div>

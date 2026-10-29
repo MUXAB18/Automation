@@ -46,28 +46,23 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number]["key"];
 
 const ALL = PERMISSIONS.map((p) => p.key) as readonly Permission[];
-const VIEW: readonly Permission[] = [
-  "client.view",
-  "seo.view",
-  "task.view",
-  "content.view",
-  "analytics.view",
-  "report.view",
-];
-const WORK: readonly Permission[] = [
-  ...VIEW,
-  "client.update",
-  "website.manage",
-  "project.manage",
-  "seo.manage",
-  "task.manage",
-  "content.create",
-  "report.generate",
-];
+
+/** The seven product roles. Keys are stable identifiers; names are display text. */
+export const ROLE_KEYS = [
+  "agency_admin",
+  "seo_manager",
+  "seo_specialist",
+  "content_writer",
+  "social_media_manager",
+  "reviewer",
+  "client",
+] as const;
+export type RoleKey = (typeof ROLE_KEYS)[number];
 
 export type RoleTemplate = {
+  /** "agency" roles can be held agency-wide or per client; "client" is the external client role. */
   scope: "agency" | "client";
-  key: string;
+  key: RoleKey;
   name: string;
   description: string;
   permissions: readonly Permission[];
@@ -76,45 +71,113 @@ export type RoleTemplate = {
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     scope: "agency",
-    key: "owner",
-    name: "Owner",
-    description: "Full control of the agency",
+    key: "agency_admin",
+    name: "Agency Admin",
+    description: "Runs the agency: people, roles, clients and everything inside them",
     permissions: ALL,
   },
   {
     scope: "agency",
-    key: "admin",
-    name: "Admin",
-    description: "Runs the agency day to day",
-    permissions: ALL.filter((p) => p !== "agency.manage"),
+    key: "seo_manager",
+    name: "SEO Manager",
+    description:
+      "Leads SEO for a client: strategy, integrations, automation, reports and approvals",
+    permissions: [
+      "client.view",
+      "client.update",
+      "website.manage",
+      "project.manage",
+      "member.manage",
+      "seo.view",
+      "seo.manage",
+      "task.view",
+      "task.manage",
+      "content.view",
+      "content.create",
+      "content.approve",
+      "analytics.view",
+      "report.view",
+      "report.generate",
+      "integration.manage",
+      "automation.manage",
+    ],
   },
   {
     scope: "agency",
-    key: "member",
-    name: "Member",
-    description: "Agency staff (read access)",
-    permissions: VIEW,
+    key: "seo_specialist",
+    name: "SEO Specialist",
+    description: "Does the SEO work: keywords, audits, issues, tasks and content drafts",
+    permissions: [
+      "client.view",
+      "seo.view",
+      "seo.manage",
+      "task.view",
+      "task.manage",
+      "content.view",
+      "content.create",
+      "analytics.view",
+      "report.view",
+    ],
+  },
+  {
+    scope: "agency",
+    key: "content_writer",
+    name: "Content Writer",
+    description: "Drafts content and works on assigned tasks",
+    permissions: [
+      "client.view",
+      "content.view",
+      "content.create",
+      "task.view",
+      "task.manage",
+      "seo.view",
+    ],
+  },
+  {
+    scope: "agency",
+    key: "social_media_manager",
+    name: "Social Media Manager",
+    description: "Plans social content, connects accounts and publishes approved posts",
+    permissions: [
+      "client.view",
+      "content.view",
+      "content.create",
+      "content.publish",
+      "integration.manage",
+      "task.view",
+      "task.manage",
+      "analytics.view",
+      "report.view",
+    ],
+  },
+  {
+    scope: "agency",
+    key: "reviewer",
+    name: "Reviewer",
+    description: "Reads everything and approves or rejects content",
+    permissions: [
+      "client.view",
+      "content.view",
+      "content.approve",
+      "seo.view",
+      "task.view",
+      "analytics.view",
+      "report.view",
+    ],
   },
   {
     scope: "client",
-    key: "viewer",
-    name: "Viewer",
-    description: "Read-only access to a client",
-    permissions: VIEW,
-  },
-  {
-    scope: "client",
-    key: "member",
-    name: "Member",
-    description: "Works on a client",
-    permissions: WORK,
-  },
-  {
-    scope: "client",
-    key: "admin",
-    name: "Admin",
-    description: "Manages a client",
-    permissions: ALL.filter((p) => !p.startsWith("agency.") && p !== "client.create"),
+    key: "client",
+    name: "Client",
+    description:
+      "The client's own people: see results and approve content (only in projects they belong to)",
+    permissions: [
+      "client.view",
+      "content.view",
+      "content.approve",
+      "analytics.view",
+      "report.view",
+    ],
   },
 ];
 

@@ -1,7 +1,7 @@
 # Database design (Phase 2)
 
 PostgreSQL schema managed with Prisma (multi-file schema in `packages/db/prisma/schema/`, one file per domain).
-62 models. Migrations: `packages/db/prisma/migrations/`. This document is the reference for the
+66 models. Migrations: `packages/db/prisma/migrations/`. This document is the reference for the
 relationships, the integrity rules the database enforces on its own, deletion behaviour and the data lifecycle.
 
 Contents: [Tenancy model](#tenancy-model) · [Design decisions](#design-decisions) · [Diagrams](#diagrams) ·
@@ -52,6 +52,8 @@ The request listed ~75 models. These were merged or adjusted to avoid duplicates
 | Customer (existing) | Renamed to **Client** (migration `rename_customer_to_client`) | Client is the same concept; keeping both would duplicate it |
 | IntegrationConnection (existing) | Replaced by **Integration** (provider catalogue) + **IntegrationAccount** (a client's connection) | One provider row per provider, many client accounts; the old table was empty and the migration refuses to drop it if it is not |
 | Membership (existing, enum role) | Replaced by **ClientMembership** + **Role** rows | Roles/permissions are data (agency-defined), not a hard-coded enum |
+| One role per membership (Phase 2) | **Phase 3:** `agency_membership_roles` / `client_membership_roles` link tables | A user can hold several roles; effective permissions are the union (see [auth.md](auth.md)) |
+| Invitation (Phase 3) | **Invitation** + **InvitationRole** | Emailed, single-use, hash-only token; can target the agency or one client |
 | TaskAssignmentHistory | Folded into **TaskEvent** (`assigned`/`unassigned` events with `from_value`/`to_value`) | Same append-only shape as every other task event |
 | MetricSyncHistory | Folded into **SyncRun** (`analytics_source_id`, `covered_from/to`, `rows_*`) | A metric sync is a sync run; one history table |
 | SEOProject | Kept as a **1:1 extension of Project** (`seo_projects.project_id` unique) | Project stays generic; SEO-only settings (website, country, language) live here |
@@ -87,7 +89,6 @@ erDiagram
     string id PK
     string agencyId FK
     string userId FK
-    string roleId FK
     enum status
   }
   Role {
@@ -105,12 +106,52 @@ erDiagram
     string roleId FK
     string permissionId FK
   }
+  AgencyMembershipRole {
+    string agencyId FK
+    string agencyMembershipId FK
+    string roleId FK
+  }
+  ClientMembershipRole {
+    string agencyId FK
+    string clientMembershipId FK
+    string roleId FK
+  }
+  Invitation {
+    string id PK
+    string agencyId FK
+    string clientId FK
+    string email
+    string tokenHash UK
+    enum status
+    string invitedById FK
+    string acceptedById FK
+  }
+  InvitationRole {
+    string agencyId FK
+    string invitationId FK
+    string roleId FK
+  }
+  Client {
+    string id PK
+  }
+  ClientMembership {
+    string id PK
+  }
   Agency ||--o{ AgencyMembership : "agency"
   User ||--o{ AgencyMembership : "user"
-  Role ||--o{ AgencyMembership : "role"
   Agency ||--o{ Role : "agency"
   Role ||--o{ RolePermission : "role"
   Permission ||--o{ RolePermission : "permission"
+  AgencyMembership ||--o{ AgencyMembershipRole : "agencyMembership"
+  Role ||--o{ AgencyMembershipRole : "role"
+  ClientMembership ||--o{ ClientMembershipRole : "clientMembership"
+  Role ||--o{ ClientMembershipRole : "role"
+  Agency ||--o{ Invitation : "agency"
+  Client |o--o{ Invitation : "client"
+  User |o--o{ Invitation : "invitedBy"
+  User |o--o{ Invitation : "acceptedBy"
+  Invitation ||--o{ InvitationRole : "invitation"
+  Role ||--o{ InvitationRole : "role"
 ```
 
 ### Clients, projects and websites
@@ -782,8 +823,9 @@ erDiagram
 | Client | every client-owned table | 1 : n | `(client_id, agency_id)` | Cascade | Composite FK to `clients(id, agency_id)` |
 | Agency | Role | 1 : n | `roles.agency_id` | Cascade | Unique `(agency_id, scope, key)`; `scope` = agency or client |
 | Role ↔ Permission | RolePermission | n : m | `(role_id, permission_id)` | Cascade / Restrict | Roles are data; permission keys come from code (`rbac.ts`) |
-| User ↔ Agency | AgencyMembership | n : m | `(agency_id, user_id)` | Cascade (user) | `role_id` must be this agency's role (composite FK) |
-| User ↔ Client | ClientMembership | n : m | `(user_id, client_id)` | Cascade | User must be an agency member (FK to agency membership); role must be a client-scope role of the same agency (FK + trigger) |
+| User ↔ Agency | AgencyMembership → AgencyMembershipRole ← Role | n : m : n | `(agency_id, user_id)`, `(role_id, agency_id)` | Cascade | A seat holds several roles, each must be this agency's (composite FK) and agency-scope (trigger) |
+| User ↔ Client | ClientMembership → ClientMembershipRole ← Role | n : m : n | `(user_id, client_id)`, `(role_id, agency_id)` | Cascade | User must be an agency member (FK to agency membership); roles must be the same agency's |
+| Agency / Client | Invitation → InvitationRole | 1 : n : n | `(client_id, agency_id)`, `(role_id, agency_id)` | Cascade | Unique `token_hash`; the Client role only on client-specific invitations (trigger) |
 | Client | Project | 1 : n | `(client_id)` | Cascade | Unique `(client_id, slug)` |
 | Project ↔ User | ProjectMembership | n : m | `(project_id, user_id)` | Cascade | User must be a member of the client |
 | Project | SeoProject | 1 : 1 | `(project_id, client_id)` | Cascade | Also references the client's Website |
@@ -818,7 +860,8 @@ Prisma cannot express these, so they live as SQL at the end of `20261030100000_p
 | --- | --- |
 | Stored credentials must be `v1.<keyId>.<iv>.<tag>.<data>` ciphertext (no plaintext tokens) | CHECK on `integration_accounts.encrypted_credentials` and `encrypted_webhook_secret` |
 | A user referenced by a task assignee/reporter, time entry, task comment or content assignee has access to that client (platform admin, active client member, or agency staff with all-clients access) | Trigger `assert_user_has_client_access` |
-| Agency seats use agency-scope roles, client memberships use client-scope roles | Trigger `assert_role_scope` (plus composite FK for same agency) |
+| Agency seats hold only agency-scope roles (the external Client role is per client) | Trigger `assert_agency_role_scope` (plus composite FKs for same agency) |
+| Invitations: lower-case email, hash-shaped token, expiry after creation; the Client role only on client invitations | CHECKs + trigger `assert_invitation_role` |
 | Publishing needs an `approved` approval for exactly that version, checked on creation and again before the job can become `publishing`/`succeeded` | Trigger `assert_publish_approved` |
 | `content_items.current_version_id` is a version of the same item | Trigger `assert_current_version_belongs` |
 | `audit_log.client_id` exists and belongs to `audit_log.agency_id` (agency is filled in when omitted) | Trigger `assert_audit_client_in_agency` |

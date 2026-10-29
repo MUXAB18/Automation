@@ -9,6 +9,10 @@ type Args = Record<string, unknown> | undefined;
 /** Prisma model name -> the column that holds the owning client id. */
 export const TENANT_MODELS: Record<string, string> = {
   Client: "id",
+  // Dotted value = no client_id column of its own; scoped through the relation named before the dot.
+  ClientMembershipRole: "clientMembership.clientId",
+  InvitationRole: "invitation.clientId",
+  Invitation: "clientId",
   AnalyticsSource: "clientId",
   MetricSnapshot: "clientId",
   AutomationRule: "clientId",
@@ -68,6 +72,7 @@ export const TENANT_MODELS: Record<string, string> = {
 export const AGENCY_MODELS: Record<string, readonly string[]> = {
   Agency: [],
   AgencyMembership: ["agency"],
+  AgencyMembershipRole: ["agencyMembership", "agency"],
   Role: ["agency"],
   RolePermission: ["role", "agency"],
   ReportTemplate: ["agency"],
@@ -102,6 +107,17 @@ const FILTERED_OPS = new Set([
   "upsert",
 ]);
 const CREATE_OPS = new Set(["create", "createMany", "createManyAndReturn", "upsert"]);
+
+/** `{ clientId: { in } }` or, for a dotted field, the same filter nested under its relation. */
+function clientFilter(field: string, ids: readonly string[]): Record<string, unknown> {
+  const parts = field.split(".");
+  const leaf = parts[parts.length - 1]!;
+  return parts
+    .slice(0, -1)
+    .reduceRight<Record<string, unknown>>((inner, key) => ({ [key]: inner }), {
+      [leaf]: { in: [...ids] },
+    });
+}
 
 function asArray<T>(value: T | T[] | undefined): T[] {
   return value === undefined ? [] : Array.isArray(value) ? value : [value];
@@ -182,10 +198,13 @@ export function scopeArgs(model: string, operation: string, args: Args, scope: S
 
   if (FILTERED_OPS.has(operation)) {
     const where = (next.where as Record<string, unknown> | undefined) ?? {};
-    next.where = { ...where, AND: [...asArray(where.AND as never), { [field]: { in: [...ids] } }] };
+    next.where = { ...where, AND: [...asArray(where.AND as never), clientFilter(field, ids)] };
   }
 
   if (CREATE_OPS.has(operation)) {
+    if (field.includes(".")) {
+      throw new ScopeViolationError(`${model} rows can only be created with admin scope`);
+    }
     if (operation === "upsert") {
       next.create = scopeCreateData(model, field, next.create as Record<string, unknown>, ids);
     } else if (operation === "create") {
@@ -200,7 +219,8 @@ export function scopeArgs(model: string, operation: string, args: Args, scope: S
   if (operation.startsWith("update") || operation === "upsert") {
     const update = (operation === "upsert" ? next.update : next.data) as
       Record<string, unknown> | undefined;
-    if (update && field !== "id") assertAllowed(update[field], ids, `${model}.${field}`);
+    if (update && field !== "id" && !field.includes("."))
+      assertAllowed(update[field], ids, `${model}.${field}`);
   }
 
   return next;

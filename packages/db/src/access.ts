@@ -1,3 +1,4 @@
+import { recordSecurityEvent } from "./audit";
 import { ForbiddenError, NotFoundError } from "./errors";
 import { ALL_PERMISSIONS, can, type Access, type Permission } from "./permissions";
 import { createScopedClient, type Scope, type ScopedDb } from "./scope";
@@ -20,28 +21,47 @@ export function forAdmin(actor: Pick<Actor, "isAdmin">): ScopedDb {
 /** Unscoped access for background jobs that loop over all clients (worker only). */
 export const forSystem = (): ScopedDb => scoped({ all: true });
 
-const permissionsOf = (role: { rolePermissions: { permission: { key: string } }[] }) =>
-  role.rolePermissions.map((rp) => rp.permission.key as Permission);
+type RoleRow = {
+  role: { key: string; rolePermissions: { permission: { key: string } }[] };
+};
 
-const ROLE_WITH_PERMISSIONS = {
-  select: { key: true, rolePermissions: { select: { permission: { select: { key: true } } } } },
+const ROLES_SELECT = {
+  select: {
+    role: {
+      select: { key: true, rolePermissions: { select: { permission: { select: { key: true } } } } },
+    },
+  },
 } as const;
+
+/** Permissions that only make sense at agency level; never granted by a per-client role. */
+const AGENCY_ONLY = (p: string) => p.startsWith("agency.") || p === "client.create";
+
+function collect(rows: RoleRow[], into: Set<Permission>, roles: Set<string>, clientLevel: boolean) {
+  for (const { role } of rows) {
+    roles.add(role.key);
+    for (const rp of role.rolePermissions) {
+      if (clientLevel && AGENCY_ONLY(rp.permission.key)) continue;
+      into.add(rp.permission.key as Permission);
+    }
+  }
+}
 
 /** Ids of every client this actor can reach: direct memberships plus agency-wide access. */
 export async function listAccessibleClientIds(actor: Actor): Promise<string[]> {
   const prisma = getUnscopedPrisma();
+  const seatIsActive = {
+    userId: actor.userId,
+    status: "active",
+    user: { deactivatedAt: null },
+  } as const;
   const [direct, viaAgency] = await Promise.all([
     prisma.clientMembership.findMany({
-      where: { userId: actor.userId, status: "active" },
+      where: { userId: actor.userId, status: "active", agencyMembership: seatIsActive },
       select: { clientId: true },
     }),
     prisma.client.findMany({
       where: {
-        agency: {
-          agencyMemberships: {
-            some: { userId: actor.userId, status: "active", allClientsAccess: true },
-          },
-        },
+        agency: { agencyMemberships: { some: { ...seatIsActive, allClientsAccess: true } } },
       },
       select: { id: true },
     }),
@@ -57,7 +77,28 @@ export async function getActorDb(actor: Actor): Promise<ScopedDb> {
 
 export type ClientContext = { db: ScopedDb; access: Access; clientId: string; agencyId: string };
 
-/** Resolve the actor's access to one client. Throws NotFoundError if they have none. */
+/** Record a refused access attempt (best effort). `kind` separates "no access" from "not allowed". */
+async function denied(
+  actor: Actor,
+  target: { agencyId?: string; clientId?: string },
+  kind: "no_access" | "forbidden",
+  permission?: Permission,
+) {
+  await recordSecurityEvent({
+    action: kind === "no_access" ? "authz.access_denied" : "authz.permission_denied",
+    actorUserId: actor.userId,
+    agencyId: target.agencyId,
+    clientId: target.clientId,
+    entityType: target.clientId ? "client" : "agency",
+    entityId: target.clientId ?? target.agencyId ?? "unknown",
+    details: permission ? { permission } : undefined,
+  });
+}
+
+/**
+ * Resolve the actor's access to one client. Throws NotFoundError (never "forbidden") when they have
+ * no access at all, so a guessed id does not reveal whether the client exists.
+ */
 export async function getClientContext(actor: Actor, clientId: string): Promise<ClientContext> {
   const prisma = getUnscopedPrisma();
   const client = await prisma.client.findUnique({
@@ -76,33 +117,35 @@ export async function getClientContext(actor: Actor, clientId: string): Promise<
     };
   }
 
-  const [membership, agencyMembership] = await Promise.all([
+  const [user, membership, agencyMembership] = await Promise.all([
+    prisma.user.findUnique({ where: { id: actor.userId }, select: { deactivatedAt: true } }),
     prisma.clientMembership.findUnique({
       where: { userId_clientId: { userId: actor.userId, clientId } },
-      select: { status: true, role: ROLE_WITH_PERMISSIONS },
+      select: { status: true, roles: ROLES_SELECT },
     }),
     prisma.agencyMembership.findUnique({
       where: { agencyId_userId: { agencyId: client.agencyId, userId: actor.userId } },
-      select: { status: true, allClientsAccess: true, role: ROLE_WITH_PERMISSIONS },
+      select: { status: true, allClientsAccess: true, roles: ROLES_SELECT },
     }),
   ]);
 
   const permissions = new Set<Permission>();
-  const roles: string[] = [];
-  if (membership?.status === "active") {
-    permissionsOf(membership.role).forEach((p) => permissions.add(p));
-    roles.push(membership.role.key);
+  const roles = new Set<string>();
+  // Both the user and their seat in the agency must be active for anything to apply.
+  if (user && !user.deactivatedAt && agencyMembership?.status === "active") {
+    if (membership?.status === "active") collect(membership.roles, permissions, roles, true);
+    if (agencyMembership.allClientsAccess)
+      collect(agencyMembership.roles, permissions, roles, false);
   }
-  if (agencyMembership?.status === "active" && agencyMembership.allClientsAccess) {
-    permissionsOf(agencyMembership.role).forEach((p) => permissions.add(p));
-    roles.push(`agency:${agencyMembership.role.key}`);
+  if (roles.size === 0) {
+    await denied(actor, { agencyId: client.agencyId, clientId }, "no_access");
+    throw new NotFoundError("Client not found");
   }
-  if (roles.length === 0) throw new NotFoundError("Client not found");
   return {
     db,
     clientId,
     agencyId: client.agencyId,
-    access: { permissions, roles, isPlatformAdmin: false },
+    access: { permissions, roles: [...roles], isPlatformAdmin: false },
   };
 }
 
@@ -112,7 +155,10 @@ export async function requirePermission(
   permission: Permission,
 ): Promise<ClientContext> {
   const ctx = await getClientContext(actor, clientId);
-  if (!can(ctx.access, permission)) throw new ForbiddenError();
+  if (!can(ctx.access, permission)) {
+    await denied(actor, { agencyId: ctx.agencyId, clientId }, "forbidden", permission);
+    throw new ForbiddenError();
+  }
   return ctx;
 }
 
@@ -125,16 +171,59 @@ export async function requireAgencyPermission(
   if (actor.isAdmin) {
     return { permissions: ALL_PERMISSIONS, roles: ["platform_admin"], isPlatformAdmin: true };
   }
-  const membership = await getUnscopedPrisma().agencyMembership.findUnique({
-    where: { agencyId_userId: { agencyId, userId: actor.userId } },
-    select: { status: true, role: ROLE_WITH_PERMISSIONS },
-  });
-  if (membership?.status !== "active") throw new NotFoundError("Agency not found");
-  const access: Access = {
-    permissions: new Set(permissionsOf(membership.role)),
-    roles: [membership.role.key],
-    isPlatformAdmin: false,
-  };
-  if (!can(access, permission)) throw new ForbiddenError();
+  const prisma = getUnscopedPrisma();
+  const [user, membership] = await Promise.all([
+    prisma.user.findUnique({ where: { id: actor.userId }, select: { deactivatedAt: true } }),
+    prisma.agencyMembership.findUnique({
+      where: { agencyId_userId: { agencyId, userId: actor.userId } },
+      select: { status: true, roles: ROLES_SELECT },
+    }),
+  ]);
+  const permissions = new Set<Permission>();
+  const roles = new Set<string>();
+  if (user && !user.deactivatedAt && membership?.status === "active") {
+    collect(membership.roles, permissions, roles, false);
+  }
+  if (roles.size === 0) {
+    await denied(actor, { agencyId }, "no_access");
+    throw new NotFoundError("Agency not found");
+  }
+  const access: Access = { permissions, roles: [...roles], isPlatformAdmin: false };
+  if (!can(access, permission)) {
+    await denied(actor, { agencyId }, "forbidden", permission);
+    throw new ForbiddenError();
+  }
   return access;
+}
+
+/** Agencies where the actor holds a permission (for agency-level screens such as Team). */
+export async function listAgenciesWith(
+  actor: Actor,
+  permission: Permission,
+): Promise<{ id: string; name: string }[]> {
+  const prisma = getUnscopedPrisma();
+  if (actor.isAdmin) {
+    return prisma.agency.findMany({
+      where: { status: "active" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  }
+  return prisma.agency.findMany({
+    where: {
+      status: "active",
+      agencyMemberships: {
+        some: {
+          userId: actor.userId,
+          status: "active",
+          user: { deactivatedAt: null },
+          roles: {
+            some: { role: { rolePermissions: { some: { permission: { key: permission } } } } },
+          },
+        },
+      },
+    },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 }
