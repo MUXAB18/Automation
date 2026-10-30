@@ -69,7 +69,7 @@ Visibility is computed on the server from the user's real permissions (`lib/sect
 | Under development / sample markers | `DevelopmentNotice`, `SampleBadge`, `SampleBanner` | `components/states.tsx` |
 | Primitives from shadcn/ui | button, badge, card, input, label, dialog, alert-dialog, sheet, popover, dropdown-menu, tooltip, table, avatar, skeleton, separator, scroll-area, sonner | `components/ui/` |
 
-`components.json` is configured, so `pnpm dlx shadcn@latest add <component>` works. (The CLI imports `cn` from `"cn"` by mistake in this setup; change it to `@/lib/utils`.) `button.tsx` and `badge.tsx` are customised and must not be overwritten.
+`components.json` is configured, so `npx shadcn@latest add <component>` works. (The CLI imports `cn` from `"cn"` by mistake in this setup; change it to `@/lib/utils`.) `button.tsx` and `badge.tsx` are customised and must not be overwritten.
 
 ### Tokens
 

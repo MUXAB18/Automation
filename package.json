@@ -1,7 +1,7 @@
 {
   "name": "automation",
   "private": true,
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "npm@10.9.3",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -9,13 +9,17 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write .",
-    "db:generate": "pnpm --filter @automation/db generate",
-    "db:migrate": "pnpm --filter @automation/db migrate",
-    "db:deploy": "pnpm --filter @automation/db migrate:deploy",
-    "db:seed": "pnpm --filter @automation/db seed"
+    "db:generate": "npm run generate -w @automation/db",
+    "db:migrate": "npm run migrate -w @automation/db",
+    "db:deploy": "npm run migrate:deploy -w @automation/db",
+    "db:seed": "npm run seed -w @automation/db",
+    "ml:install": "python3 -m venv services/ml/.venv && services/ml/.venv/bin/pip install -r services/ml/requirements-dev.txt",
+    "ml:train": "cd services/ml && .venv/bin/python -m app.train",
+    "ml:dev": "cd services/ml && ML_ALLOW_NO_AUTH=${ML_ALLOW_NO_AUTH:-1} .venv/bin/python -m app",
+    "ml:test": "cd services/ml && .venv/bin/python -m pytest -q"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.5",
     "dotenv": "^18.0.9",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.4.3",
@@ -25,5 +29,13 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.1",
     "vitest": "5.0.5"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
   }
 }

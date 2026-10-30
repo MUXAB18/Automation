@@ -3,3 +3,4 @@ export * from "./google-analytics";
 export * from "./google-auth";
 export * from "./google-http";
 export * from "./google-search-console";
+export * from "./ml-client";

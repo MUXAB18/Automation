@@ -854,7 +854,7 @@ erDiagram
 ## Integrity beyond foreign keys
 
 Prisma cannot express these, so they live as SQL at the end of `20261030100000_phase2_domain_model/migration.sql`.
-`pnpm --filter @automation/db test` exercises every one against a real database (`src/schema-integrity.test.ts`).
+`npm run test -w @automation/db` exercises every one against a real database (`src/schema-integrity.test.ts`).
 
 | Rule | Mechanism |
 | --- | --- |
@@ -958,9 +958,9 @@ Never updated, always inserted: `keyword_rank_snapshots`, `backlink_snapshots`, 
 * Every client-owned table has an index starting with `client_id` (or a composite key that does) so tenant-filtered queries stay index-backed.
 * Adding a client-owned table: add `agency_id` + `client_id`, the composite `client` relation, `@@unique([id, client_id])`, register it in
   `TENANT_MODELS` (`src/scope.ts`; a test fails if you forget), add cross-client tests, and use composite FKs for every reference to another client-owned table.
-* Commands: `pnpm db:migrate` (dev, creates a migration), `pnpm db:deploy` (apply), `pnpm db:seed` (idempotent; permissions, default roles, provider and
+* Commands: `npm run db:migrate` (dev, creates a migration), `npm run db:deploy` (apply), `npm run db:seed` (idempotent; permissions, default roles, provider and
   metric catalogues, the default agency, SARJ Worldwide and, outside production, sample SEO/task/content rows).
-  Checks: `pnpm --filter @automation/db exec prisma validate`, and `prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code` to detect drift.
+  Checks: `npx -w @automation/db prisma validate`, and `prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code` to detect drift.
 * Upgrading an existing Phase 1 database is data-preserving: the migration creates a "Default Agency", moves existing clients, websites, job runs and
   audit rows under it, converts memberships to `client_memberships` with matching roles, and refuses to run if the legacy `integration_connections` table has rows.
-  Run `pnpm db:seed` afterwards to attach role permissions.
+  Run `npm run db:seed` afterwards to attach role permissions.

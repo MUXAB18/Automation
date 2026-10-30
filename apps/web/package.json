@@ -11,8 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@automation/config": "workspace:*",
-    "@automation/db": "workspace:*",
+    "@automation/config": "*",
+    "@automation/db": "*",
     "@radix-ui/react-slot": "^1.5.0",
     "better-auth": "^1.7.14",
     "class-variance-authority": "^0.7.1",

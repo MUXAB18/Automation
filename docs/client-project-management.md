@@ -55,12 +55,12 @@ deliberately do not sit under a loading boundary, because streaming would send a
 
 ## Tests
 
-`pnpm --filter @automation/db test`:
+`npm run test -w @automation/db`:
 
 * `client-management.test.ts` – ownership (creator becomes owner, owner must work on the client, database trigger as backstop, owner cleared on removal), profile validation, atomic create, permissions per role and per agency, team management, search/filter/paging, brand versions, client page sections, cross-tenant access.
 * `projects.test.ts` – full project creation and relationships, rollback on a foreign website or an ineligible person, validation, permissions (including `seo.manage`), cross-client ids, update with keyword history, archive/restore, search, project detail sections per role and for Client users.
 
-`pnpm --filter @automation/web test` – `form-input.test.ts` checks that what each form posts is accepted by the real validation schemas and that errors use the same field names the forms display.
+`npm run test -w @automation/web` – `form-input.test.ts` checks that what each form posts is accepted by the real validation schemas and that errors use the same field names the forms display.
 
 ## Not in this phase
 

@@ -18,7 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@automation/config": "workspace:*",
+    "@automation/config": "*",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "better-auth": "^1.7.14",
@@ -26,7 +26,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@automation/integrations": "workspace:*",
+    "@automation/integrations": "*",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.23.1",
     "dotenv": "^18.0.9",

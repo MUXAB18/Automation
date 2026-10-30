@@ -55,7 +55,7 @@ const dueDate = z.preprocess(
 
 const labels = z
   .preprocess(
-    (v) => (typeof v === "string" ? v.split(/[\n,]/) : v),
+    (v) => (typeof v === "string" ? v.split(/[\n,]/).map((x) => x.trim()).filter(Boolean) : v),
     z.array(z.string().trim().min(1).max(30)).max(10, "At most 10 labels"),
   )
   .default([]);
@@ -130,7 +130,6 @@ export const isAutomation = (a: Actor | AutomationActor): a is AutomationActor =
 
 // ---- Helpers --------------------------------------------------------------------------------------
 
-type TaskRow = Awaited<ReturnType<typeof loadRow>>;
 
 async function loadRow(tx: Tx, taskId: string, clientId: string) {
   const task = await tx.task.findFirst({
@@ -1032,7 +1031,7 @@ const attachmentSchema = z.object({
     .trim()
     .min(1)
     .max(200)
-    .transform((n) => n.replace(/[\\/\u0000-\u001f]/g, "_")),
+    .transform((n) => n.replace(/[\\/\p{Cc}]/gu, "_")),
   mimeType: z
     .string()
     .refine(

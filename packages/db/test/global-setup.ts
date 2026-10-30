@@ -7,7 +7,7 @@ export default function setup() {
   if (url === process.env.DATABASE_URL) {
     throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL: tests wipe their database");
   }
-  execSync("pnpm exec prisma migrate deploy", {
+  execSync("npx prisma migrate deploy", {
     cwd: import.meta.dirname + "/..",
     env: { ...process.env, DATABASE_URL: url },
     stdio: "pipe",

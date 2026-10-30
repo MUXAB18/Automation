@@ -148,7 +148,7 @@ cp .env.example .env            # then edit the values below
 # SEED_ADMIN_EMAIL=you@yourcompany.com
 # SEED_ADMIN_PASSWORD=<at least 12 characters>
 # BETTER_AUTH_SECRET=$(openssl rand -base64 32)   ENCRYPTION_KEY=$(openssl rand -base64 32)
-pnpm db:deploy && pnpm db:seed
+npm run db:deploy && npm run db:seed
 ```
 
 The seed creates the admin (also as Agency Admin with all-clients access of the "Default Agency"), the permission catalogue and role templates. It is idempotent and never changes an existing password.
@@ -156,7 +156,7 @@ After signing in, invite the rest of the team from **Team**. Change the admin pa
 
 ## Development-only sample users
 
-Set `SEED_DEV_USER_PASSWORD` (12+ characters, git-ignored `.env`) and run `pnpm db:seed` to create one user per role, all with that password:
+Set `SEED_DEV_USER_PASSWORD` (12+ characters, git-ignored `.env`) and run `npm run db:seed` to create one user per role, all with that password:
 
 | Email | Role / purpose |
 | --- | --- |
@@ -177,7 +177,7 @@ Safety: nothing is created unless the variable is set; the seed **refuses** when
 
 ## Tests
 
-`pnpm test` — database-backed suites in `packages/db`:
+`npm run test` — database-backed suites in `packages/db`:
 
 * `authz.test.ts` – role union, per-client vs agency-wide access, suspended/deactivated users, **id tampering** (project of another client, client of another agency, other tenant's ids), project-scoped Client users, audit of refusals.
 * `schema-integrity.test.ts` – the same guarantees straight from PostgreSQL (composite keys, triggers, checks).

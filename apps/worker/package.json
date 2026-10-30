@@ -19,7 +19,7 @@
   "dependencies": {
     "bullmq": "^6.5.0",
     "zod": "^4.6.7",
-    "@automation/db": "workspace:*",
-    "@automation/config": "workspace:*"
+    "@automation/db": "*",
+    "@automation/config": "*"
   }
 }
