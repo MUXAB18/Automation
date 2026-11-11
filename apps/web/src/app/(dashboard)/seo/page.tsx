@@ -1,11 +1,12 @@
 import { Search } from "lucide-react";
-import { getSeoWorkspace } from "@automation/db";
+import Link from "next/link";
+import { getSeoWorkspace, listSeoProjects } from "@automation/db";
 import { DataTable, dash, formatDate } from "@/components/data-table";
 import { FilterBar, SearchInput } from "@/components/filters";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
 import { ScopeBadge } from "@/components/scope-badge";
-import { DevelopmentNotice, EmptyState, SampleBadge, SampleBanner } from "@/components/states";
+import { EmptyState, SampleBadge, SampleBanner } from "@/components/states";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ export const metadata = { title: "SEO" };
 
 const SOURCE_LABEL: Record<string, string> = {
   search_console: "Search Console",
+  se_ranking: "SE Ranking",
   serp_api: "SERP API",
   manual: "Manual",
 };
@@ -29,6 +31,7 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
   const raw = await searchParams;
   const scope = await getScope(actor);
   const q = str(raw.q);
+  const projects = await listSeoProjects(actor, scope.clientId);
   const data = await getSeoWorkspace(actor, {
     clientId: scope.clientId,
     projectId: scope.projectId,
@@ -46,11 +49,38 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
         breadcrumbs={[{ label: "SEO" }]}
         badges={<ScopeBadge scope={scope} />}
       />
-      <DevelopmentNotice>
-        Adding keywords, running audits and pulling rankings from Google Search Console are coming
-        next. This page shows what is stored in your database; ranks appear once a provider is
-        connected.
-      </DevelopmentNotice>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>SEO projects</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {projects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No SEO project exists yet for this selection. Rankings, audits, competitors and
+              backlinks from SE Ranking appear in a project&apos;s dashboard once it is linked in
+              Integrations. Google Search Console rankings are not imported yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border text-sm">
+              {projects.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <div>
+                    <Link href={`/seo/projects/${p.id}`} className="font-medium hover:underline">
+                      {p.name}
+                    </Link>
+                    <p className="text-xs text-muted-foreground">
+                      {p.domain} · {p.clientName} · {p.keywords} keywords
+                    </p>
+                  </div>
+                  <Badge tone={p.providerLinked ? "success" : "outline"}>
+                    {p.providerLinked ? "SE Ranking linked" : "Not connected"}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
       <SampleBanner show={kw.rows.some((k) => k.isSample)} />
 
       <section aria-label="Summary" className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

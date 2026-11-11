@@ -1,3 +1,4 @@
+import { ForbiddenError, NotFoundError } from "../errors";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createTokenCipherForTests } from "../../test/cipher";
 import {
@@ -12,7 +13,6 @@ import {
 import {
   PAGE_SIZE,
   getAnalytics,
-  getIntegrations,
   getOverview,
   getPublishing,
   getSeoWorkspace,
@@ -23,6 +23,7 @@ import {
   listReports,
   markNotificationsRead,
 } from "./workspace";
+import { getClientIntegrations } from "./integrations";
 import { searchProjects } from "./projects";
 import { searchTasks } from "./task-queries";
 
@@ -109,7 +110,6 @@ describe("section permissions", () => {
     expect((await getAnalytics(writer)).sources).toEqual([]);
     expect((await listReports(writer)).rows).toEqual([]);
     expect((await listAutomationRules(writer)).rows).toEqual([]);
-    expect((await getIntegrations(writer)).accounts).toEqual([]);
     const overview = await getOverview(writer);
     expect(overview.sections).toMatchObject({ tasks: true, content: true, integrations: false });
   });
@@ -120,8 +120,7 @@ describe("section permissions", () => {
     await addMember(user, a1.id, "reviewer");
     await addMember(user, a2.id, "seo_manager");
     expect((await getOverview(user)).sections.integrations).toBe(true); // from a2 only
-    const accounts = await getIntegrations(user, { clientId: a1.id });
-    expect(accounts.accounts).toEqual([]); // a1 lacks integration.manage
+    await expect(getClientIntegrations(user, a1.id)).rejects.toBeInstanceOf(ForbiddenError); // a1 lacks integration.view
   });
 });
 
@@ -219,7 +218,7 @@ describe("section read models", () => {
         encryptedCredentials: createTokenCipherForTests().encrypt("t", "c"),
       },
     });
-    const result = await getIntegrations(staff);
+    const result = await getClientIntegrations(staff, a1.id);
     expect(result.accounts).toHaveLength(1);
     expect(JSON.stringify(result)).not.toMatch(/encrypted|v1\./);
     expect((await getPublishing(staff)).connectedAccounts).toBe(1);
@@ -239,7 +238,7 @@ describe("section read models", () => {
         encryptedCredentials: createTokenCipherForTests().encrypt("t", "c"),
       },
     });
-    expect((await getIntegrations(staff)).accounts).toEqual([]);
+    await expect(getClientIntegrations(staff, b.id)).rejects.toBeInstanceOf(NotFoundError);
     expect((await getPublishing(staff)).connectedAccounts).toBe(0);
   });
 

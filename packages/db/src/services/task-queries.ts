@@ -619,5 +619,9 @@ export { OPEN_STATUSES, TASK_STATUSES };
 /** Clients where this person can create tasks (for the "which client?" step of the new-task form). */
 export async function listClientsForTasks(actor: Actor) {
   const ids = clientIdsWith(await getAccessMap(actor), "task.manage");
-  return forClients(ids).client.findMany({ where: { status: { not: "archived" } }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+  return forClients(ids).client.findMany({
+    where: { status: { not: "archived" } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
 }

@@ -1,6 +1,6 @@
 .next
-node_modules
+.next-buildnode_modules
 package-lock.json
 packages/db/src/generated
-packages/db/prisma/migrations
+prisma/migrations
 *.md

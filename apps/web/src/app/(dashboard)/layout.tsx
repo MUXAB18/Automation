@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
-import { notFound } from "next/navigation";
-import { ROLE_TEMPLATES, getAccessMap, listNotifications } from "@automation/db";
+import { notFound, redirect } from "next/navigation";
+import { ROLE_TEMPLATES, getAccessMap, isClientOnlyUser, listNotifications } from "@automation/db";
 import { DesktopSidebar, MobileNav } from "@/components/app/app-sidebar";
 import { NotificationsMenu, type NotificationItem } from "@/components/app/notifications-menu";
 import { ScopeSwitcher } from "@/components/app/scope-switcher";
@@ -33,6 +33,8 @@ function timeAgo(date: Date) {
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Every request: a verified session from the database, or a redirect to /login.
   const actor = await requireActor();
+  // A client's own people use the portal, never the agency screens.
+  if (await isClientOnlyUser(actor)) redirect("/portal");
   const [scope, visible, notifications, access] = await Promise.all([
     getScope(actor),
     getVisibleSections(actor),
@@ -63,7 +65,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }));
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen gap-4 p-2 sm:p-3 lg:p-4">
       <a
         href="#main"
         className="sr-only z-50 rounded-md bg-card px-3 py-2 text-sm shadow focus:not-sr-only focus:absolute focus:left-3 focus:top-3"
@@ -72,7 +74,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </a>
       <DesktopSidebar visible={visible} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/85 px-3 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 -mx-1 flex h-20 items-center justify-between gap-3 bg-background/85 px-1 backdrop-blur sm:px-3">
           <div className="flex min-w-0 items-center gap-2">
             <MobileNav visible={visible} />
             <BrandMark className="size-8 lg:hidden" />
@@ -91,7 +93,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               projectId={scope.projectId}
             />
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-3">
             <NotificationsMenu items={items} unread={notifications.unread} />
             <UserMenu
               name={actor.name || actor.email}
@@ -105,7 +107,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <main
           id="main"
           tabIndex={-1}
-          className="fade-up mx-auto w-full max-w-7xl flex-1 p-4 outline-none sm:p-6 lg:p-8"
+          className="fade-up mx-auto w-full max-w-[84rem] flex-1 px-1 pb-8 pt-2 outline-none sm:px-3 lg:px-4"
         >
           {children}
         </main>

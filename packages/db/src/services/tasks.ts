@@ -55,7 +55,13 @@ const dueDate = z.preprocess(
 
 const labels = z
   .preprocess(
-    (v) => (typeof v === "string" ? v.split(/[\n,]/).map((x) => x.trim()).filter(Boolean) : v),
+    (v) =>
+      typeof v === "string"
+        ? v
+            .split(/[\n,]/)
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : v,
     z.array(z.string().trim().min(1).max(30)).max(10, "At most 10 labels"),
   )
   .default([]);
@@ -129,7 +135,6 @@ export type AutomationActor = { automation: { ruleId: string; runId?: string } }
 export const isAutomation = (a: Actor | AutomationActor): a is AutomationActor => "automation" in a;
 
 // ---- Helpers --------------------------------------------------------------------------------------
-
 
 async function loadRow(tx: Tx, taskId: string, clientId: string) {
   const task = await tx.task.findFirst({
@@ -259,7 +264,8 @@ async function linkIssues(tx: Tx, clientId: string, taskId: string, issueIds: st
 // ---- Create ----------------------------------------------------------------------------------------
 
 type Origin =
-  { kind: "user"; actor: Actor } | { kind: "automation"; ruleId: string; runId?: string };
+  | { kind: "user"; actor: Actor }
+  | { kind: "automation"; ruleId: string; runId?: string; automationKey?: string };
 
 /** The one place a task row is created. */
 async function insertTask(
@@ -295,6 +301,7 @@ async function insertTask(
       estimateMinutes: data.estimateMinutes ?? null,
       dueAt: data.dueDate ? endOfDayInTimeZone(data.dueDate, ctx.timezone) : null,
       contentItemId: data.contentItemId ?? null,
+      automationKey: origin.kind === "automation" ? (origin.automationKey ?? null) : null,
     },
   });
   if (data.seoIssueIds.length) await linkIssues(tx, ctx.clientId, task.id, data.seoIssueIds);
@@ -361,6 +368,8 @@ export const automationTaskSchema = createTaskSchema.omit({ assigneeId: true }).
   assigneeId: optionalId,
   /** Repeating the same key returns the task already created instead of making a duplicate. */
   idempotencyKey: z.string().min(1).max(200).optional(),
+  /** Identity of the condition behind the task. While the task is open the database allows only one per key. */
+  automationKey: z.string().min(1).max(300).optional(),
 });
 export type AutomationTaskInput = z.input<typeof automationTaskSchema>;
 
@@ -389,7 +398,7 @@ export async function createTaskForAutomation(
   };
   if (data.assigneeId) await assertAssignable(ctx, data.assigneeId);
 
-  const { ruleId, runId, idempotencyKey, ...fields } = data;
+  const { ruleId, runId, idempotencyKey, automationKey, ...fields } = data;
   return prisma.$transaction(async (tx) => {
     if (idempotencyKey) {
       const key = {
@@ -405,7 +414,7 @@ export async function createTaskForAutomation(
       tx,
       ctx,
       { ...fields, seoIssueIds: fields.seoIssueIds },
-      { kind: "automation", ruleId, runId },
+      { kind: "automation", ruleId, runId, automationKey },
     );
     if (idempotencyKey) {
       await tx.idempotencyKey.create({

@@ -38,7 +38,7 @@ Visibility is computed on the server from the user's real permissions (`lib/sect
 | Analytics | `/analytics` | `analytics.view` | Preview | Data sources and stored readings; empty until a provider syncs |
 | Reports | `/reports` | `report.view` | Preview | Read-only list of reports |
 | Automation Rules | `/automation` | `automation.manage` | Preview | Read-only list of rules |
-| Integrations | `/integrations` | `integration.manage` | Preview | Provider catalogue and connected accounts (status only, never credentials) |
+| Integrations | `/integrations` | `integration.view` | Framework | Per-client connections, health, sync history and retry; see [integrations-framework.md](integrations-framework.md) |
 | Team | `/team` | `agency.members` | Live | Invitations, roles, removal (Phase 3) |
 | Settings | `/settings` | everyone | Live | Account, theme, your access |
 
@@ -49,7 +49,7 @@ Visibility is computed on the server from the user's real permissions (`lib/sect
 * Development seed rows are flagged `is_sample = true` (projects, tasks, keywords, content items) and the seed marks the sample notification in its payload.
 * Rows show a blue **Sample** chip and the page shows a **Development sample data** banner. Nothing is ever labelled live unless a provider produced it: keyword ranks show their source (e.g. *Search Console*) in green; with no provider connected they read **No data yet**.
 * Real rows default to `is_sample = false`. Production seeds create no sample data (`NODE_ENV=production`).
-* Third-party integrations are not implemented: Integrations, Analytics and Social Publishing say so and show empty states.
+* Third-party data sync is not implemented per provider yet: Analytics and Social Publishing say so and show empty states. The Integrations section runs on the shared framework with a development mock.
 
 ## Components
 

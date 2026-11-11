@@ -19,6 +19,11 @@ const TONES: Record<string, Record<string, Tone>> = {
   },
   priority: { low: "neutral", medium: "info", high: "warning", urgent: "destructive" },
   content: {
+    idea: "neutral",
+    brief: "neutral",
+    client_approval: "primary",
+    rejected: "destructive",
+    cancelled: "neutral",
     draft: "neutral",
     in_review: "primary",
     changes_requested: "warning",
@@ -68,6 +73,7 @@ const TONES: Record<string, Record<string, Tone>> = {
     awaiting_approval: "warning",
     skipped: "neutral",
   },
+  delivery: { pending: "neutral", sending: "info", needs_review: "warning", sent: "success", delivered: "success", bounced: "destructive", failed: "destructive", cancelled: "neutral" },
   rule: { draft: "neutral", active: "success", paused: "warning", archived: "neutral" },
   report: {
     draft: "neutral",
@@ -79,6 +85,7 @@ const TONES: Record<string, Record<string, Tone>> = {
     archived: "neutral",
   },
   publishing: {
+    needs_review: "warning",
     queued: "neutral",
     scheduled: "info",
     publishing: "info",

@@ -1,0 +1,252 @@
+// ---- Automation rules and their executions --------------------------------------------------
+
+enum AutomationRuleStatus {
+  draft
+  active
+  paused
+  archived
+}
+
+enum AutomationTrigger {
+  schedule
+  event
+  webhook
+  manual
+}
+
+enum AutomationRunStatus {
+  queued
+  running
+  awaiting_approval
+  succeeded
+  failed
+  cancelled
+  skipped
+}
+
+// The built-in rule types of the monitoring engine. Each has its own validated `config` shape.
+enum AutomationRuleKind {
+  keyword_rank_drop
+  critical_audit_issue
+  page_needs_optimization
+  organic_traffic_drop
+  content_deadline_approaching
+  task_overdue
+  integration_failing
+}
+
+enum AutomationFindingStatus {
+  open
+  resolved
+}
+
+enum StepRunStatus {
+  pending
+  running
+  succeeded
+  failed
+  skipped
+}
+
+// Per-client behavior as data (CLAUDE.md rule 3): triggers, conditions and steps are JSON.
+model AutomationRule {
+  id               String               @id @default(uuid())
+  agencyId         String               @map("agency_id")
+  clientId         String               @map("client_id")
+  name             String
+  description      String?
+  status           AutomationRuleStatus @default(draft)
+  trigger          AutomationTrigger
+  triggerConfig    Json                 @default("{}") @map("trigger_config") @db.JsonB
+  conditions       Json                 @default("[]") @db.JsonB
+  steps            Json                 @default("[]") @db.JsonB
+  // Publishing/website-changing steps always need approval (CLAUDE.md rule 6).
+  requiresApproval Boolean              @default(true) @map("requires_approval")
+  // Monitoring rules (null = a legacy generic rule, which the monitoring engine ignores).
+  kind             AutomationRuleKind?
+  severity         IssueSeverity        @default(medium)
+  // Scope: a client rule covers the client; with a project it covers only that project's data.
+  projectId        String?              @map("project_id")
+  // Set when the rule was created from an agency template; `customized` stops template updates overwriting it.
+  templateId       String?              @map("template_id")
+  customized       Boolean              @default(false)
+  config           Json                 @default("{}") @db.JsonB
+  assignment       Json                 @default("{}") @db.JsonB
+  taskTemplate     Json                 @default("{}") @map("task_template") @db.JsonB
+  duePolicy        Json                 @default("{}") @map("due_policy") @db.JsonB
+  notifyPolicy     Json                 @default("{}") @map("notify_policy") @db.JsonB
+  cooldown         Json                 @default("{}") @db.JsonB
+  intervalMinutes  Int                  @default(60) @map("interval_minutes")
+  // Bumped on every edit so a run records exactly which definition it executed.
+  version          Int                  @default(1)
+  createdById      String?              @map("created_by_id")
+  lastRunAt        DateTime?            @map("last_run_at") @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?            @map("archived_at") @db.Timestamptz(3)
+
+  client         Client                  @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  createdBy      User?                   @relation("AutomationRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  project        Project?                @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Restrict)
+  // The template must belong to the same agency as the client.
+  template       AutomationRuleTemplate? @relation(fields: [templateId, agencyId], references: [id, agencyId], onDelete: Restrict)
+  automationRuns AutomationRun[]
+  findings       AutomationFinding[]
+
+  @@unique([clientId, name])
+  @@unique([id, clientId])
+  @@index([clientId, status, trigger])
+  @@map("automation_rules")
+}
+
+model AutomationRun {
+  id               String              @id @default(uuid())
+  agencyId         String              @map("agency_id")
+  clientId         String              @map("client_id")
+  ruleId           String              @map("rule_id")
+  idempotencyKeyId String?             @map("idempotency_key_id")
+  ruleVersion      Int                 @map("rule_version")
+  trigger          AutomationTrigger
+  status           AutomationRunStatus @default(queued)
+  triggerPayload   Json                @default("{}") @map("trigger_payload") @db.JsonB
+  attempt          Int                 @default(1)
+  error            String?
+  // Set on a failed run that may be tried again; the worker re-queues it after this time.
+  nextAttemptAt    DateTime?           @map("next_attempt_at") @db.Timestamptz(3)
+  // Counts and reasons: { findings, newFindings, tasksCreated, deduped, notified, resolved, skippedReason }.
+  summary          Json                @default("{}") @db.JsonB
+  startedAt        DateTime?           @map("started_at") @db.Timestamptz(3)
+  finishedAt       DateTime?           @map("finished_at") @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client             Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  rule               AutomationRule      @relation(fields: [ruleId, clientId], references: [id, clientId], onDelete: Cascade)
+  idempotencyKey     IdempotencyKey?     @relation(fields: [idempotencyKeyId, clientId], references: [id, clientId], onDelete: Restrict)
+  automationStepRuns AutomationStepRun[]
+
+  @@unique([idempotencyKeyId, clientId])
+  @@unique([id, clientId])
+  @@index([clientId, ruleId, createdAt(sort: Desc)])
+  @@index([clientId, status])
+  @@map("automation_runs")
+}
+
+model AutomationStepRun {
+  id         String        @id @default(uuid())
+  agencyId   String        @map("agency_id")
+  clientId   String        @map("client_id")
+  runId      String        @map("run_id")
+  stepIndex  Int           @map("step_index")
+  stepKey    String        @map("step_key")
+  action     String
+  status     StepRunStatus @default(pending)
+  attempt    Int           @default(1)
+  input      Json?         @db.JsonB
+  output     Json?         @db.JsonB
+  error      String?
+  startedAt  DateTime?     @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime?     @map("finished_at") @db.Timestamptz(3)
+
+  client Client        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  run    AutomationRun @relation(fields: [runId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([runId, stepIndex, attempt])
+  @@index([clientId, status])
+  @@map("automation_step_runs")
+}
+
+// Makes retried requests/jobs safe: the first caller for (agency, scope, key) wins, later callers
+// get the stored response. clientId is null for agency-level operations.
+model IdempotencyKey {
+  id             String    @id @default(uuid())
+  agencyId       String    @map("agency_id")
+  clientId       String?   @map("client_id")
+  scope          String
+  key            String
+  requestHash    String?   @map("request_hash")
+  responseStatus Int?      @map("response_status")
+  response       Json?     @db.JsonB
+  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client        Client?        @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  automationRun AutomationRun?
+
+  @@unique([agencyId, scope, key])
+  @@unique([id, clientId])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+// An agency-wide default. Applying it creates (or updates) one rule per active client; a client can then
+// pause or customise its own copy. Templates hold no client data, so they carry no client_id.
+model AutomationRuleTemplate {
+  id              String               @id @default(uuid())
+  agencyId        String               @map("agency_id")
+  name            String
+  description     String?
+  kind            AutomationRuleKind
+  status          AutomationRuleStatus @default(draft)
+  severity        IssueSeverity        @default(medium)
+  config          Json                 @default("{}") @db.JsonB
+  assignment      Json                 @default("{}") @db.JsonB
+  taskTemplate    Json                 @default("{}") @map("task_template") @db.JsonB
+  duePolicy       Json                 @default("{}") @map("due_policy") @db.JsonB
+  notifyPolicy    Json                 @default("{}") @map("notify_policy") @db.JsonB
+  cooldown        Json                 @default("{}") @db.JsonB
+  intervalMinutes Int                  @default(60) @map("interval_minutes")
+  createdById     String?              @map("created_by_id")
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt      DateTime?            @map("archived_at") @db.Timestamptz(3)
+
+  agency Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  rules  AutomationRule[]
+
+  @@unique([agencyId, name])
+  @@unique([id, agencyId])
+  @@map("automation_rule_templates")
+}
+
+// One detected condition on one entity (a keyword, an audit issue, a page, ...). It is the dedupe and
+// lifecycle record: re-detecting updates it, a cleared condition resolves it, and it remembers its task.
+model AutomationFinding {
+  id             String                  @id @default(uuid())
+  agencyId       String                  @map("agency_id")
+  clientId       String                  @map("client_id")
+  ruleId         String?                 @map("rule_id")
+  kind           AutomationRuleKind
+  // Stable identity of the condition, e.g. "kw-drop:<keywordId>". Unique per client: two rules never duplicate it.
+  dedupeKey      String                  @map("dedupe_key")
+  status         AutomationFindingStatus @default(open)
+  severity       IssueSeverity
+  title          String
+  details        Json                    @default("{}") @db.JsonB
+  entityType     String                  @map("entity_type")
+  entityId       String                  @map("entity_id")
+  projectId      String?                 @map("project_id")
+  taskId         String?                 @map("task_id")
+  seoIssueId     String?                 @map("seo_issue_id")
+  // How many tasks this finding has produced over time: part of the idempotency key of the next one.
+  taskCount      Int                     @default(0) @map("task_count")
+  occurrences    Int                     @default(1)
+  firstSeenAt    DateTime                @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt     DateTime                @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  resolvedAt     DateTime?               @map("resolved_at") @db.Timestamptz(3)
+  lastNotifiedAt DateTime?               @map("last_notified_at") @db.Timestamptz(3)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client   Client          @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  rule     AutomationRule? @relation(fields: [ruleId, clientId], references: [id, clientId], onDelete: Restrict)
+  task     Task?           @relation(fields: [taskId, clientId], references: [id, clientId], onDelete: Restrict)
+  seoIssue SeoIssue?       @relation(fields: [seoIssueId, clientId], references: [id, clientId], onDelete: Restrict)
+
+  @@unique([clientId, dedupeKey])
+  @@unique([id, clientId])
+  @@index([clientId, status, kind])
+  @@index([taskId])
+  @@map("automation_findings")
+}

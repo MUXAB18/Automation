@@ -7,95 +7,95 @@
  * light or dark through <html data-theme="light|dark"> (set from a cookie on the server, no flash).
  */
 :root {
-  --background: oklch(0.985 0.002 250);
-  --foreground: oklch(0.21 0.02 255);
+  --background: oklch(0.945 0.014 275);
+  --foreground: oklch(0.22 0.03 270);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.02 255);
+  --card-foreground: oklch(0.22 0.03 270);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.02 255);
-  --muted: oklch(0.96 0.005 250);
-  --muted-foreground: oklch(0.5 0.02 255);
-  --secondary: oklch(0.96 0.005 250);
-  --secondary-foreground: oklch(0.28 0.02 255);
-  --accent: oklch(0.955 0.012 262);
-  --accent-foreground: oklch(0.3 0.06 262);
-  --border: oklch(0.9 0.008 250);
-  --input: oklch(0.88 0.01 250);
-  --primary: oklch(0.46 0.17 262);
+  --popover-foreground: oklch(0.22 0.03 270);
+  --muted: oklch(0.957 0.011 275);
+  --muted-foreground: oklch(0.52 0.03 270);
+  --secondary: oklch(0.957 0.011 275);
+  --secondary-foreground: oklch(0.3 0.03 270);
+  --accent: oklch(0.95 0.025 275);
+  --accent-foreground: oklch(0.32 0.1 275);
+  --border: oklch(0.925 0.012 275);
+  --input: oklch(0.89 0.016 275);
+  --primary: oklch(0.5 0.235 272);
   --primary-foreground: oklch(0.99 0 0);
-  --destructive: oklch(0.55 0.22 27);
-  --success: oklch(0.55 0.15 150);
+  --destructive: oklch(0.58 0.23 25);
+  --success: oklch(0.55 0.16 150);
   --warning: oklch(0.68 0.15 75);
   --info: oklch(0.55 0.13 235);
-  --ring: oklch(0.55 0.17 262);
-  --primary-soft: oklch(0.96 0.025 262);
-  --sidebar: oklch(0.99 0.002 250);
-  --brand-from: oklch(0.55 0.19 275);
-  --brand-to: oklch(0.5 0.17 235);
-  --radius: 0.5rem;
-  --shadow-card-value: 0 1px 2px oklch(0.2 0.02 255 / 0.05), 0 1px 3px oklch(0.2 0.02 255 / 0.04);
+  --ring: oklch(0.55 0.2 272);
+  --primary-soft: oklch(0.95 0.035 275);
+  --sidebar: oklch(1 0 0);
+  --brand-from: oklch(0.6 0.22 280);
+  --brand-to: oklch(0.5 0.23 262);
+  --radius: 1rem;
+  --shadow-card-value: 0 14px 34px -16px oklch(0.4 0.12 275 / 0.2), 0 1px 2px oklch(0.3 0.05 275 / 0.05);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: oklch(0.17 0.015 255);
-    --foreground: oklch(0.96 0.005 250);
-    --card: oklch(0.21 0.017 255);
-    --card-foreground: oklch(0.96 0.005 250);
-    --popover: oklch(0.23 0.018 255);
-    --popover-foreground: oklch(0.96 0.005 250);
-    --muted: oklch(0.26 0.017 255);
-    --muted-foreground: oklch(0.7 0.015 255);
-    --secondary: oklch(0.27 0.017 255);
+    --background: oklch(0.15 0.022 275);
+    --foreground: oklch(0.96 0.006 275);
+    --card: oklch(0.2 0.024 275);
+    --card-foreground: oklch(0.96 0.006 275);
+    --popover: oklch(0.23 0.026 275);
+    --popover-foreground: oklch(0.96 0.006 275);
+    --muted: oklch(0.25 0.024 275);
+    --muted-foreground: oklch(0.7 0.02 275);
+    --secondary: oklch(0.26 0.024 275);
     --secondary-foreground: oklch(0.95 0.005 250);
-    --accent: oklch(0.29 0.03 262);
+    --accent: oklch(0.29 0.045 275);
     --accent-foreground: oklch(0.95 0.01 262);
-    --border: oklch(0.3 0.017 255);
-    --input: oklch(0.34 0.017 255);
-    --primary: oklch(0.7 0.14 262);
+    --border: oklch(0.29 0.024 275);
+    --input: oklch(0.33 0.024 275);
+    --primary: oklch(0.7 0.18 272);
     --primary-foreground: oklch(0.15 0.02 255);
     --destructive: oklch(0.68 0.19 25);
     --success: oklch(0.72 0.15 150);
     --warning: oklch(0.8 0.14 80);
     --info: oklch(0.74 0.12 235);
-    --ring: oklch(0.7 0.14 262);
-    --primary-soft: oklch(0.27 0.045 262);
-    --sidebar: oklch(0.19 0.016 255);
-    --brand-from: oklch(0.62 0.18 275);
-    --brand-to: oklch(0.58 0.15 235);
-    --shadow-card-value: 0 1px 2px oklch(0 0 0 / 0.3);
+    --ring: oklch(0.7 0.18 272);
+    --primary-soft: oklch(0.28 0.07 275);
+    --sidebar: oklch(0.2 0.024 275);
+    --brand-from: oklch(0.62 0.21 280);
+    --brand-to: oklch(0.55 0.21 262);
+    --shadow-card-value: 0 14px 34px -18px oklch(0 0 0 / 0.55), 0 1px 2px oklch(0 0 0 / 0.3);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --background: oklch(0.17 0.015 255);
-  --foreground: oklch(0.96 0.005 250);
-  --card: oklch(0.21 0.017 255);
-  --card-foreground: oklch(0.96 0.005 250);
-  --popover: oklch(0.23 0.018 255);
-  --popover-foreground: oklch(0.96 0.005 250);
-  --muted: oklch(0.26 0.017 255);
-  --muted-foreground: oklch(0.7 0.015 255);
-  --secondary: oklch(0.27 0.017 255);
+  --background: oklch(0.15 0.022 275);
+  --foreground: oklch(0.96 0.006 275);
+  --card: oklch(0.2 0.024 275);
+  --card-foreground: oklch(0.96 0.006 275);
+  --popover: oklch(0.23 0.026 275);
+  --popover-foreground: oklch(0.96 0.006 275);
+  --muted: oklch(0.25 0.024 275);
+  --muted-foreground: oklch(0.7 0.02 275);
+  --secondary: oklch(0.26 0.024 275);
   --secondary-foreground: oklch(0.95 0.005 250);
-  --accent: oklch(0.29 0.03 262);
+  --accent: oklch(0.29 0.045 275);
   --accent-foreground: oklch(0.95 0.01 262);
-  --border: oklch(0.3 0.017 255);
-  --input: oklch(0.34 0.017 255);
-  --primary: oklch(0.7 0.14 262);
+  --border: oklch(0.29 0.024 275);
+  --input: oklch(0.33 0.024 275);
+  --primary: oklch(0.7 0.18 272);
   --primary-foreground: oklch(0.15 0.02 255);
   --destructive: oklch(0.68 0.19 25);
   --success: oklch(0.72 0.15 150);
   --warning: oklch(0.8 0.14 80);
   --info: oklch(0.74 0.12 235);
-  --ring: oklch(0.7 0.14 262);
-  --primary-soft: oklch(0.27 0.045 262);
-  --sidebar: oklch(0.19 0.016 255);
-  --brand-from: oklch(0.62 0.18 275);
-  --brand-to: oklch(0.58 0.15 235);
-  --shadow-card-value: 0 1px 2px oklch(0 0 0 / 0.3);
+  --ring: oklch(0.7 0.18 272);
+  --primary-soft: oklch(0.28 0.07 275);
+  --sidebar: oklch(0.2 0.024 275);
+  --brand-from: oklch(0.62 0.21 280);
+  --brand-to: oklch(0.55 0.21 262);
+  --shadow-card-value: 0 14px 34px -18px oklch(0 0 0 / 0.55), 0 1px 2px oklch(0 0 0 / 0.3);
   color-scheme: dark;
 }
 
@@ -131,6 +131,27 @@
   --color-brand-to: var(--brand-to);
   --shadow-card: var(--shadow-card-value);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Tailwind v4 draws borders in the text colour unless told otherwise; every border should use the theme token. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+}
+
+/* Native <select>: one chevron that fits both themes, instead of the browser's default arrow. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 1rem;
+  padding-right: 2.25rem;
 }
 
 body {

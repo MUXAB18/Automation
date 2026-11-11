@@ -9,3 +9,8 @@ dist
 .DS_Store
 packages/db/src/generated
 .data/
+
+.next-build/
+
+# Database backups written by the backup service
+backups/

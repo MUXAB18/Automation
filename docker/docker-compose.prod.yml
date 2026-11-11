@@ -1,0 +1,84 @@
+# Production overrides. Layer on top of the base file:
+#
+#   docker compose --env-file .env.production \
+#     -f docker/docker-compose.yml -f docker/docker-compose.prod.yml --profile proxy up -d --build
+#
+# What changes versus the base file: Postgres is not published on the host, the web port is bound to
+# localhost (Caddy is the only public entry), and the optional n8n and backup services become available.
+# See docs/deployment.md and docs/operations.md.
+
+services:
+  postgres:
+    ports: !reset []
+
+  web:
+    ports: !override
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+
+  caddy:
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS to your domain, e.g. app.example.com}
+
+  # Optional workflow automation (profile "n8n"). The Next.js app and the worker do NOT depend on it, and
+  # nothing in this repository calls it yet: it is provided so workflows can be built against the same
+  # network. Create its database once:  docker compose exec postgres createdb -U automation n8n
+  n8n:
+    profiles: ["n8n"]
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:?pin an n8n version in .env.production, never "latest"}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: automation
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:?run npm run docker:init}
+      # Encrypts credentials stored inside n8n. Losing it makes them unreadable: back it up separately.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?generate with openssl rand -hex 32}
+      N8N_HOST: ${N8N_HOST:?set N8N_HOST, e.g. n8n.example.com}
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://${N8N_HOST}/
+      N8N_PROXY_HOPS: "1"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"
+      GENERIC_TIMEZONE: ${TZ:-UTC}
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Nightly-capable logical backups (profile "backup"): `docker compose run --rm backup` writes a
+  # compressed pg_dump to ./backups. Schedule it from the host's cron/systemd timer; see docs/operations.md.
+  backup:
+    profiles: ["backup"]
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run npm run docker:init}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        set -e;
+        f="/backups/automation-$$(date -u +%Y%m%dT%H%M%SZ).dump";
+        pg_dump -h postgres -U automation -d automation --format=custom --no-owner -f "$$f";
+        pg_restore --list "$$f" > /dev/null;
+        echo "backup written and verified: $$f";
+        find /backups -name 'automation-*.dump' -mtime +${BACKUP_RETENTION_DAYS:-14} -delete
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  n8n-data:

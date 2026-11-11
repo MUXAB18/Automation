@@ -1,13 +1,24 @@
 import { z } from "zod";
 
-import type { FetchLike } from "./google-http";
+type FetchLike = typeof fetch;
 
-const intentSchema = z.enum(["informational", "commercial", "transactional", "navigational", "local"]);
+const intentSchema = z.enum([
+  "informational",
+  "commercial",
+  "transactional",
+  "navigational",
+  "local",
+]);
 
 const analyzeResponseSchema = z.object({
   intents: z.array(z.object({ keyword: z.string(), intent: intentSchema, confidence: z.number() })),
   clusters: z.array(
-    z.object({ label: z.string(), intent: intentSchema, size: z.number().int(), keywords: z.array(z.string()) }),
+    z.object({
+      label: z.string(),
+      intent: intentSchema,
+      size: z.number().int(),
+      keywords: z.array(z.string()),
+    }),
   ),
   model: z.object({
     version: z.string(),
@@ -48,11 +59,16 @@ export function createMlClient(options: MlClientOptions) {
   const doFetch = options.fetch ?? fetch;
   const base = options.baseUrl.replace(/\/+$/, "");
 
-  async function analyzeKeywords(keywords: string[], similarityThreshold = 0.35): Promise<KeywordAnalysis> {
+  async function analyzeKeywords(
+    keywords: string[],
+    similarityThreshold = 0.35,
+  ): Promise<KeywordAnalysis> {
     const cleaned = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))];
     if (cleaned.length === 0) throw new MlServiceError("No keywords to analyze");
     if (cleaned.length > ML_BATCH_SIZE) {
-      throw new MlServiceError(`Send at most ${ML_BATCH_SIZE} keywords per call so related ones stay clustered together`);
+      throw new MlServiceError(
+        `Send at most ${ML_BATCH_SIZE} keywords per call so related ones stay clustered together`,
+      );
     }
     let response: Response;
     try {
@@ -63,9 +79,12 @@ export function createMlClient(options: MlClientOptions) {
         signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
       });
     } catch (error) {
-      throw new MlServiceError(`ML service unreachable: ${error instanceof Error ? error.message : "unknown error"}`);
+      throw new MlServiceError(
+        `ML service unreachable: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
     }
-    if (!response.ok) throw new MlServiceError(`ML service returned ${response.status}`, response.status);
+    if (!response.ok)
+      throw new MlServiceError(`ML service returned ${response.status}`, response.status);
     const parsed = analyzeResponseSchema.safeParse(await response.json().catch(() => null));
     if (!parsed.success) throw new MlServiceError("ML service returned an unexpected response");
     return parsed.data;

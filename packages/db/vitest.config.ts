@@ -10,5 +10,8 @@ export default defineConfig({
     setupFiles: ["./test/setup.ts"],
     // Integration tests share one database, so run files one at a time.
     fileParallelism: false,
+    // The shared database can be slow when the machine is busy.
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });

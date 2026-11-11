@@ -1,0 +1,377 @@
+// ---- SEO: projects, keywords, rankings, audits, issues, competitors, backlinks, pages ------
+
+enum SeoProjectStatus {
+  active
+  paused
+  archived
+}
+
+enum DeviceType {
+  desktop
+  mobile
+  tablet
+}
+
+enum RankSource {
+  search_console
+  serp_api
+  manual
+  se_ranking
+}
+
+enum AuditStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum IssueSeverity {
+  info
+  low
+  medium
+  high
+  critical
+}
+
+enum IssueStatus {
+  open
+  acknowledged
+  in_progress
+  fixed
+  ignored
+  reopened
+}
+
+enum IndexStatus {
+  unknown
+  indexed
+  not_indexed
+  blocked
+}
+
+enum BacklinkSource {
+  search_console
+  moz
+  bing
+  common_crawl
+  manual
+  se_ranking
+}
+
+// SEO configuration of a Project (1:1). Keeps Project generic while SEO settings live here.
+model SeoProject {
+  id             String           @id @default(uuid())
+  agencyId       String           @map("agency_id")
+  clientId       String           @map("client_id")
+  projectId      String           @map("project_id")
+  websiteId      String           @map("website_id")
+  status         SeoProjectStatus @default(active)
+  targetCountry  String           @default("CA") @map("target_country") @db.VarChar(2)
+  targetLanguage String           @default("en") @map("target_language") @db.VarChar(8)
+  settings       Json             @default("{}") @db.JsonB
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client            Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  project           Project             @relation(fields: [projectId, clientId], references: [id, clientId], onDelete: Cascade)
+  website           Website             @relation(fields: [websiteId, clientId], references: [id, clientId], onDelete: Restrict)
+  keywords          Keyword[]
+  siteAudits        SiteAudit[]
+  seoIssues         SeoIssue[]
+  competitors       Competitor[]
+  backlinkSnapshots BacklinkSnapshot[]
+  providerLink      ProviderSeoProject?
+
+  @@unique([projectId, clientId])
+  @@unique([id, clientId])
+  @@index([clientId, status])
+  @@index([websiteId])
+  @@map("seo_projects")
+}
+
+model Keyword {
+  id              String     @id @default(uuid())
+  agencyId        String     @map("agency_id")
+  clientId        String     @map("client_id")
+  seoProjectId    String     @map("seo_project_id")
+  // Stored lower-cased and trimmed by the application so the unique key is meaningful.
+  term            String
+  country         String     @default("CA") @db.VarChar(2)
+  locale          String     @default("en") @db.VarChar(8)
+  device          DeviceType @default(desktop)
+  targetUrl       String?    @map("target_url")
+  tags            String[]
+  isActive        Boolean    @default(true) @map("is_active")
+  // True for development seed rows, so the UI can tell them apart from live provider data.
+  isSample        Boolean    @default(false) @map("is_sample")
+  // Provider identity (e.g. "se_ranking" + the provider's keyword id): repeated imports update, never duplicate.
+  externalSource  String?    @map("external_source")
+  externalId      String?    @map("external_id")
+  searchVolume    Int?       @map("search_volume")
+  volumeUpdatedAt DateTime?  @map("volume_updated_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client               Client                @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  seoProject           SeoProject            @relation(fields: [seoProjectId, clientId], references: [id, clientId], onDelete: Cascade)
+  keywordRankSnapshots KeywordRankSnapshot[]
+
+  @@unique([seoProjectId, term, country, locale, device])
+  @@unique([seoProjectId, externalSource, externalId])
+  @@unique([id, clientId])
+  @@index([clientId, isActive])
+  @@map("keywords")
+}
+
+// Append-only: every check inserts a new row. `position` null = not ranking in the tracked range.
+model KeywordRankSnapshot {
+  id           String     @id @default(uuid())
+  agencyId     String     @map("agency_id")
+  clientId     String     @map("client_id")
+  keywordId    String     @map("keyword_id")
+  syncRunId    String?    @map("sync_run_id")
+  source       RankSource
+  checkedOn    DateTime   @map("checked_on") @db.Date
+  position     Decimal?   @db.Decimal(7, 2)
+  url          String?
+  clicks       Int?
+  impressions  Int?
+  serpFeatures Json?      @map("serp_features") @db.JsonB
+  capturedAt   DateTime   @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  client  Client   @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  keyword Keyword  @relation(fields: [keywordId, clientId], references: [id, clientId], onDelete: Cascade)
+  syncRun SyncRun? @relation(fields: [syncRunId, clientId], references: [id, clientId], onDelete: Restrict)
+
+  // A sync run records a keyword/day/source once; re-running creates a new run, never overwrites.
+  @@unique([syncRunId, keywordId, source, checkedOn])
+  @@index([clientId, keywordId, checkedOn(sort: Desc), capturedAt(sort: Desc)])
+  @@map("keyword_rank_snapshots")
+}
+
+model SiteAudit {
+  id             String      @id @default(uuid())
+  agencyId       String      @map("agency_id")
+  clientId       String      @map("client_id")
+  seoProjectId   String      @map("seo_project_id")
+  status         AuditStatus @default(queued)
+  triggeredById  String?     @map("triggered_by_id")
+  pagesCrawled   Int         @default(0) @map("pages_crawled")
+  healthScore    Decimal?    @map("health_score") @db.Decimal(5, 2)
+  summary        Json        @default("{}") @db.JsonB
+  error          String?
+  // Provider identity and source metadata (e.g. "se_ranking" + the provider audit id).
+  externalSource String?     @map("external_source")
+  externalId     String?     @map("external_id")
+  startedAt      DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt     DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client            Client            @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  seoProject        SeoProject        @relation(fields: [seoProjectId, clientId], references: [id, clientId], onDelete: Cascade)
+  triggeredBy       User?             @relation("AuditTrigger", fields: [triggeredById], references: [id], onDelete: SetNull)
+  issueFirstSeens   SeoIssue[]        @relation("IssueFirstSeen")
+  issueLastSeens    SeoIssue[]        @relation("IssueLastSeen")
+  seoIssueHistories SeoIssueHistory[]
+
+  @@unique([id, clientId])
+  @@unique([seoProjectId, externalSource, externalId])
+  @@index([clientId, seoProjectId, createdAt(sort: Desc)])
+  @@map("site_audits")
+}
+
+// A finding with a stable identity across audits (`fingerprint`), so progress is trackable.
+model SeoIssue {
+  id               String        @id @default(uuid())
+  agencyId         String        @map("agency_id")
+  clientId         String        @map("client_id")
+  seoProjectId     String        @map("seo_project_id")
+  websitePageId    String?       @map("website_page_id")
+  firstSeenAuditId String?       @map("first_seen_audit_id")
+  lastSeenAuditId  String?       @map("last_seen_audit_id")
+  taskId           String?       @map("task_id")
+  ruleKey          String        @map("rule_key")
+  fingerprint      String
+  severity         IssueSeverity
+  status           IssueStatus   @default(open)
+  title            String
+  // Which provider produced the finding ("se_ranking"); null for findings created inside the platform.
+  externalSource   String?       @map("external_source")
+  details          Json          @default("{}") @db.JsonB
+  firstSeenAt      DateTime      @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt       DateTime      @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  resolvedAt       DateTime?     @map("resolved_at") @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client              @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  seoProject         SeoProject          @relation(fields: [seoProjectId, clientId], references: [id, clientId], onDelete: Cascade)
+  websitePage        WebsitePage?        @relation(fields: [websitePageId, clientId], references: [id, clientId], onDelete: Restrict)
+  firstSeenAudit     SiteAudit?          @relation("IssueFirstSeen", fields: [firstSeenAuditId, clientId], references: [id, clientId], onDelete: Restrict)
+  lastSeenAudit      SiteAudit?          @relation("IssueLastSeen", fields: [lastSeenAuditId, clientId], references: [id, clientId], onDelete: Restrict)
+  task               Task?               @relation(fields: [taskId, clientId], references: [id, clientId], onDelete: Restrict)
+  seoIssueHistories  SeoIssueHistory[]
+  automationFindings AutomationFinding[]
+
+  @@unique([seoProjectId, fingerprint])
+  @@unique([id, clientId])
+  @@index([clientId, status, severity])
+  @@index([websitePageId])
+  @@index([taskId])
+  @@map("seo_issues")
+}
+
+// Append-only status transitions of an issue.
+model SeoIssueHistory {
+  id          String       @id @default(uuid())
+  agencyId    String       @map("agency_id")
+  clientId    String       @map("client_id")
+  seoIssueId  String       @map("seo_issue_id")
+  auditId     String?      @map("audit_id")
+  changedById String?      @map("changed_by_id")
+  fromStatus  IssueStatus? @map("from_status")
+  toStatus    IssueStatus  @map("to_status")
+  note        String?
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client    Client     @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  seoIssue  SeoIssue   @relation(fields: [seoIssueId, clientId], references: [id, clientId], onDelete: Cascade)
+  audit     SiteAudit? @relation(fields: [auditId, clientId], references: [id, clientId], onDelete: Restrict)
+  changedBy User?      @relation("IssueChanger", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([seoIssueId, createdAt(sort: Desc)])
+  @@index([clientId])
+  @@map("seo_issue_history")
+}
+
+model Competitor {
+  id             String   @id @default(uuid())
+  agencyId       String   @map("agency_id")
+  clientId       String   @map("client_id")
+  seoProjectId   String   @map("seo_project_id")
+  domain         String
+  name           String?
+  notes          String?
+  isActive       Boolean  @default(true) @map("is_active")
+  externalSource String?  @map("external_source")
+  externalId     String?  @map("external_id")
+  // Provider-reported figures (e.g. domain trust), kept as reported with the time they were read.
+  providerData   Json     @default("{}") @map("provider_data") @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client            Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  seoProject        SeoProject         @relation(fields: [seoProjectId, clientId], references: [id, clientId], onDelete: Cascade)
+  backlinkSnapshots BacklinkSnapshot[]
+
+  @@unique([seoProjectId, domain])
+  @@unique([seoProjectId, externalSource, externalId])
+  @@unique([id, clientId])
+  @@index([clientId])
+  @@map("competitors")
+}
+
+// Append-only backlink profile per domain (the client's own or a competitor's) per sync run.
+model BacklinkSnapshot {
+  id               String         @id @default(uuid())
+  agencyId         String         @map("agency_id")
+  clientId         String         @map("client_id")
+  seoProjectId     String         @map("seo_project_id")
+  competitorId     String?        @map("competitor_id")
+  syncRunId        String?        @map("sync_run_id")
+  source           BacklinkSource
+  subjectDomain    String         @map("subject_domain")
+  totalBacklinks   Int            @map("total_backlinks")
+  referringDomains Int            @map("referring_domains")
+  newLinks         Int?           @map("new_links")
+  lostLinks        Int?           @map("lost_links")
+  authorityScore   Decimal?       @map("authority_score") @db.Decimal(6, 2)
+  raw              Json?          @db.JsonB
+  capturedOn       DateTime       @map("captured_on") @db.Date
+  capturedAt       DateTime       @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  client     Client      @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  seoProject SeoProject  @relation(fields: [seoProjectId, clientId], references: [id, clientId], onDelete: Cascade)
+  competitor Competitor? @relation(fields: [competitorId, clientId], references: [id, clientId], onDelete: Restrict)
+  syncRun    SyncRun?    @relation(fields: [syncRunId, clientId], references: [id, clientId], onDelete: Restrict)
+
+  @@unique([syncRunId, seoProjectId, subjectDomain, source])
+  @@index([clientId, seoProjectId, subjectDomain, capturedOn(sort: Desc)])
+  @@map("backlink_snapshots")
+}
+
+model WebsitePage {
+  id              String      @id @default(uuid())
+  agencyId        String      @map("agency_id")
+  clientId        String      @map("client_id")
+  websiteId       String      @map("website_id")
+  // Normalised absolute URL (no fragment, canonical host).
+  url             String
+  path            String
+  title           String?
+  metaDescription String?     @map("meta_description")
+  canonicalUrl    String?     @map("canonical_url")
+  httpStatus      Int?        @map("http_status")
+  indexStatus     IndexStatus @default(unknown) @map("index_status")
+  wordCount       Int?        @map("word_count")
+  contentHash     String?     @map("content_hash")
+  isActive        Boolean     @default(true) @map("is_active")
+  firstSeenAt     DateTime    @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastCrawledAt   DateTime?   @map("last_crawled_at") @db.Timestamptz(3)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client    Client     @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  website   Website    @relation(fields: [websiteId, clientId], references: [id, clientId], onDelete: Cascade)
+  seoIssues SeoIssue[]
+
+  @@unique([websiteId, url])
+  @@unique([id, clientId])
+  @@index([clientId, indexStatus])
+  @@map("website_pages")
+}
+
+// A project as the provider (SE Ranking) reports it. Discovered by the sync; a person links it to a
+// platform SeoProject, and only linked + enabled projects have their keywords, rankings, audits,
+// competitors and backlinks synced. The platform never invents that mapping.
+model ProviderSeoProject {
+  id                   String    @id @default(uuid())
+  agencyId             String    @map("agency_id")
+  clientId             String    @map("client_id")
+  integrationAccountId String    @map("integration_account_id")
+  // The provider's project (site) id.
+  externalId           String    @map("external_id")
+  name                 String?
+  title                String?
+  providerActive       Boolean   @default(true) @map("provider_active")
+  keywordCount         Int?      @map("keyword_count")
+  // Search engines configured in the provider for this project: [{ siteEngineId, regionName, langCode, ... }].
+  engines              Json      @default("[]") @db.JsonB
+  // The one engine whose rankings are tracked (chosen when linking).
+  siteEngineId         Int?      @map("site_engine_id")
+  seoProjectId         String?   @map("seo_project_id")
+  syncEnabled          Boolean   @default(false) @map("sync_enabled")
+  // Latest provider summary (visibility, top 5/10/30, average position, ...) exactly as reported.
+  summary              Json      @default("{}") @db.JsonB
+  summaryAt            DateTime? @map("summary_at") @db.Timestamptz(3)
+  // Rankings are stored up to this day; the next sync continues from here (with a small overlap).
+  rankingsThrough      DateTime? @map("rankings_through") @db.Date
+  linkedById           String?   @map("linked_by_id")
+  linkedAt             DateTime? @map("linked_at") @db.Timestamptz(3)
+  syncedAt             DateTime  @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+  seoProject         SeoProject?        @relation(fields: [seoProjectId, clientId], references: [id, clientId], onDelete: Restrict)
+  linkedBy           User?              @relation("ProviderSeoProjectLinker", fields: [linkedById], references: [id], onDelete: SetNull)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([seoProjectId, clientId])
+  @@unique([id, clientId])
+  @@index([clientId])
+  @@map("provider_seo_projects")
+}

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { logger } from "@automation/config";
 import {
   ConflictError,
   ForbiddenError,
@@ -57,7 +58,7 @@ export async function inviteAction(_prev: TeamState, formData: FormData): Promis
       });
     } catch (error) {
       emailed = false;
-      console.error("invitation email failed", error instanceof Error ? error.message : error);
+      logger.error("invitation email failed", { error });
     }
     revalidatePath("/team");
     // The admin sees the link once, so they can pass it on if email is not configured.

@@ -1,0 +1,208 @@
+// ---- Third-party integrations: catalogue, connected accounts, syncs, webhooks --------------
+
+enum IntegrationCategory {
+  search
+  analytics
+  social
+  cms
+  seo_data
+  crm
+  ai
+  email
+}
+
+enum IntegrationAuthType {
+  oauth2
+  api_key
+  none
+}
+
+enum IntegrationAccountStatus {
+  active
+  needs_reauth
+  error
+  disconnected
+}
+
+enum SyncRunKind {
+  incremental
+  backfill
+  full
+  manual
+}
+
+enum SyncTrigger {
+  schedule
+  manual
+  webhook
+  retry
+}
+
+enum RunStatus {
+  queued
+  running
+  succeeded
+  partial
+  failed
+  cancelled
+}
+
+enum WebhookEventStatus {
+  received
+  processed
+  ignored
+  failed
+}
+
+// Global catalogue of supported providers. One row per provider: prevents duplicate providers.
+model Integration {
+  id                  String               @id @default(uuid())
+  key                 String               @unique // e.g. google_search_console, google_analytics_4, linkedin
+  name                String
+  category            IntegrationCategory
+  authType            IntegrationAuthType  @map("auth_type")
+  isEnabled           Boolean              @default(true) @map("is_enabled")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  integrationAccounts IntegrationAccount[]
+  webhookEvents       WebhookEvent[]
+
+  @@map("integrations")
+}
+
+// One client's connection to one provider account (a Google login, a LinkedIn page, ...).
+// SECRETS: only ciphertext is stored (see @automation/integrations). The migration adds CHECK
+// constraints that reject values not in the "v1.<keyId>.<iv>.<tag>.<data>" format.
+model IntegrationAccount {
+  id                     String                   @id @default(uuid())
+  agencyId               String                   @map("agency_id")
+  clientId               String                   @map("client_id")
+  integrationId          String                   @map("integration_id")
+  // Provider's own id for the account (Google sub, LinkedIn URN, ...). Stops duplicates.
+  externalAccountId      String                   @map("external_account_id")
+  displayName            String?                  @map("display_name")
+  status                 IntegrationAccountStatus @default(active)
+  scopes                 String[]
+  encryptedCredentials   String                   @map("encrypted_credentials")
+  encryptedWebhookSecret String?                  @map("encrypted_webhook_secret")
+  tokenExpiresAt         DateTime?                @map("token_expires_at") @db.Timestamptz(3)
+  connectedById          String?                  @map("connected_by_id")
+  lastSyncedAt           DateTime?                @map("last_synced_at") @db.Timestamptz(3)
+  lastErrorAt            DateTime?                @map("last_error_at") @db.Timestamptz(3)
+  disconnectedAt         DateTime?                @map("disconnected_at") @db.Timestamptz(3)
+  metadata               Json                     @default("{}") @db.JsonB
+  createdAt              DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client           Client                  @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integration      Integration             @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  connectedBy      User?                   @relation("IntegrationConnector", fields: [connectedById], references: [id], onDelete: SetNull)
+  analyticsSources AnalyticsSource[]
+  syncRuns         SyncRun[]
+  webhookEvents    WebhookEvent[]
+  publishingJobs   PublishingJob[]
+  publishedPosts   PublishedPost[]
+  crmContacts      CrmContact[]
+  crmPipelines     CrmPipeline[]
+  crmOpportunities CrmOpportunity[]
+  crmConversations CrmConversation[]
+  crmAutomations   CrmAutomation[]
+  socialAccounts   ProviderSocialAccount[]
+  socialPosts      ProviderSocialPost[]
+  socialStats      ProviderSocialStat[]
+  seoProjects      ProviderSeoProject[]
+
+  @@unique([clientId, integrationId, externalAccountId])
+  @@unique([id, clientId])
+  @@index([clientId, status])
+  @@index([integrationId])
+  @@map("integration_accounts")
+}
+
+// One execution of a data sync (also records metric sync coverage per analytics source).
+model SyncRun {
+  id                   String      @id @default(uuid())
+  agencyId             String      @map("agency_id")
+  clientId             String      @map("client_id")
+  integrationAccountId String      @map("integration_account_id")
+  analyticsSourceId    String?     @map("analytics_source_id")
+  kind                 SyncRunKind @default(incremental)
+  trigger              SyncTrigger @default(schedule)
+  status               RunStatus   @default(queued)
+  attempt              Int         @default(1)
+  // Date range the run covered, so gaps in history are visible.
+  coveredFrom          DateTime?   @map("covered_from") @db.Date
+  coveredTo            DateTime?   @map("covered_to") @db.Date
+  rowsFetched          Int         @default(0) @map("rows_fetched")
+  rowsWritten          Int         @default(0) @map("rows_written")
+  // Source metadata and per-resource results: { source: "live"|"mock", resources: {...}, unsupported: [...] }.
+  summary              Json        @default("{}") @db.JsonB
+  startedAt            DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt           DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client               Client                @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount   IntegrationAccount    @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+  analyticsSource      AnalyticsSource?      @relation(fields: [analyticsSourceId, clientId], references: [id, clientId], onDelete: Restrict)
+  metricSnapshots      MetricSnapshot[]
+  syncErrors           SyncError[]
+  postMetricSnapshots  PostMetricSnapshot[]
+  keywordRankSnapshots KeywordRankSnapshot[]
+  backlinkSnapshots    BacklinkSnapshot[]
+  providerSocialStats  ProviderSocialStat[]
+
+  @@unique([id, clientId])
+  @@index([clientId, integrationAccountId, createdAt(sort: Desc)])
+  @@index([clientId, status])
+  @@index([analyticsSourceId])
+  @@map("sync_runs")
+}
+
+model SyncError {
+  id         String   @id @default(uuid())
+  agencyId   String   @map("agency_id")
+  clientId   String   @map("client_id")
+  syncRunId  String   @map("sync_run_id")
+  code       String
+  message    String
+  retryable  Boolean  @default(false)
+  details    Json?    @db.JsonB
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  client  Client  @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  syncRun SyncRun @relation(fields: [syncRunId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@index([syncRunId])
+  @@index([clientId, occurredAt(sort: Desc)])
+  @@map("sync_errors")
+}
+
+// Inbound provider webhooks. Received before routing, so client/account are nullable until matched.
+// (provider, external event id) is unique: replayed deliveries are ignored.
+model WebhookEvent {
+  id                   String             @id @default(uuid())
+  integrationId        String             @map("integration_id")
+  agencyId             String?            @map("agency_id")
+  clientId             String?            @map("client_id")
+  integrationAccountId String?            @map("integration_account_id")
+  externalEventId      String             @map("external_event_id")
+  eventType            String             @map("event_type")
+  // Verified against the account's encrypted webhook secret before processing.
+  signatureValid       Boolean            @default(false) @map("signature_valid")
+  status               WebhookEventStatus @default(received)
+  payload              Json               @db.JsonB
+  attempts             Int                @default(0)
+  error                String?
+  receivedAt           DateTime           @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt          DateTime?          @map("processed_at") @db.Timestamptz(3)
+
+  integration        Integration         @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  client             Client?             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount? @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationId, externalEventId])
+  @@index([status, receivedAt])
+  @@index([clientId, receivedAt(sort: Desc)])
+  @@map("webhook_events")
+}

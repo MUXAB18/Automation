@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["APP_URL=http://localhost:3100", "npx", "next", "dev", "apps/web", "-p", "3100"],
+      "port": 3100
+    }
+  ]
+}

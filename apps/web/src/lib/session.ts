@@ -20,3 +20,15 @@ export async function requireActor(): Promise<SessionActor> {
     email: session.user.email,
   };
 }
+
+/** Like requireActor but returns null instead of redirecting: for route handlers that answer with a status code. */
+export async function getOptionalActor(): Promise<SessionActor | null> {
+  const session = await getSession();
+  if (!session) return null;
+  return {
+    userId: session.user.id,
+    isAdmin: session.user.isAdmin === true,
+    name: session.user.name,
+    email: session.user.email,
+  };
+}

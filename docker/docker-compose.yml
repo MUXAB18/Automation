@@ -1,1 +1,176 @@
-# Placeholder: web, worker, postgres, redis, caddy services go here.
+# Full stack: PostgreSQL, Redis, database migrations, web, worker and the Python keyword service.
+#
+#   npm run docker:init       # once: creates .env.docker with generated secrets
+#   npm run docker:up         # build and start everything (migrations run automatically)
+#   npm run docker:seed       # first time only: reference data, roles, admin user, sample data
+#   open http://localhost:3000
+#
+# Run from the repository root. See docs/docker.md.
+
+name: automation
+
+# Rotate container logs so a chatty service cannot fill the disk. Logs are JSON lines (see docs/operations.md).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://automation:${POSTGRES_PASSWORD:?run npm run docker:init}@postgres:5432/automation
+  REDIS_URL: redis://redis:6379
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?run npm run docker:init}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run npm run docker:init}
+  ML_SERVICE_URL: http://ml:8001
+  ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:?run npm run docker:init}
+  GHL_CLIENT_ID: ${GHL_CLIENT_ID:-}
+  GHL_CLIENT_SECRET: ${GHL_CLIENT_SECRET:-}
+  GHL_REDIRECT_URI: ${GHL_REDIRECT_URI:-}
+  GHL_PUBLISHING_ENABLED: ${GHL_PUBLISHING_ENABLED:-0}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  AI_MODEL: ${AI_MODEL:-}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_BASE_URL: ${AI_BASE_URL:-}
+  AI_PRICING_JSON: ${AI_PRICING_JSON:-}
+  MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+  EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  SYNC_POLL_INTERVAL_MS: ${SYNC_POLL_INTERVAL_MS:-15000}
+  HEARTBEAT_INTERVAL_MS: ${HEARTBEAT_INTERVAL_MS:-300000}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: automation
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run npm run docker:init}
+      POSTGRES_DB: automation
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-test-database.sql:ro
+    # Localhost only, and on 5433 so it never clashes with a Postgres installed on this machine (5432).
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automation -d automation"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: applies every pending Prisma migration, then exits. web and worker wait for it.
+  migrate:
+    image: automation-app:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # First-time data (profile "seed"): reference data, roles, the admin user and sample rows. Safe to re-run.
+  seed:
+    profiles: ["seed"]
+    image: automation-app:local
+    command: ["npx", "tsx", "prisma/seed.ts"]
+    environment:
+      <<: *app-env
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?run npm run docker:init}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?run npm run docker:init}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Admin}
+      SEED_DEV_USER_PASSWORD: ${SEED_DEV_USER_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  ml:
+    image: automation-ml:local
+    build:
+      context: ../services/ml
+    restart: unless-stopped
+    environment:
+      ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:?run npm run docker:init}
+
+  web:
+    image: automation-web:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    environment: *app-env
+    logging: *logging
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - uploads:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: automation-app:local
+    restart: unless-stopped
+    environment: *app-env
+    logging: *logging
+    # 200 only while Postgres and Redis are reachable and every polling loop is ticking (apps/worker/src/health.ts).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      ml:
+        condition: service_healthy
+
+  # Optional HTTPS reverse proxy: docker compose --profile proxy up -d
+  caddy:
+    profiles: ["proxy"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+volumes:
+  postgres-data:
+  redis-data:
+  uploads:
+  caddy-data:
+  caddy-config:

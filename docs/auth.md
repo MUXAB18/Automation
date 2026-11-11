@@ -62,7 +62,9 @@ Seven roles exist in every agency. A user may hold **several** at once; permissi
 | `analytics.view` — See analytics and metrics | ✓ | ✓ | ✓ |  | ✓ | ✓ | ✓ |
 | `report.view` — See reports | ✓ | ✓ | ✓ |  | ✓ | ✓ | ✓ |
 | `report.generate` — Generate and deliver reports | ✓ | ✓ |  |  |  |  |  |
-| `integration.manage` — Connect and disconnect integrations | ✓ | ✓ |  |  | ✓ |  |  |
+| `integration.view` — See integration status, sync history and provider health (never credentials) | ✓ | ✓ | ✓ |  | ✓ |  |  |
+| `integration.sync` — Test connections, run syncs and retry failed ones | ✓ | ✓ |  |  | ✓ |  |  |
+| `integration.manage` — Connect, reconnect, replace credentials for and disconnect integrations | ✓ | ✓ |  |  | ✓ |  |  |
 | `automation.manage` — Create and edit automation rules | ✓ | ✓ |  |  |  |  |  |
 | `agency.members` — Manage agency staff and roles | ✓ |  |  |  |  |  |  |
 | `agency.manage` — Change agency settings and templates | ✓ |  |  |  |  |  |  |

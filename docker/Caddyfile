@@ -1,1 +1,7 @@
-# Placeholder: reverse proxy and HTTPS config goes here.
+# Reverse proxy for the full stack (docker compose --profile proxy up -d).
+# SITE_ADDRESS=:80 serves plain HTTP; set it to your domain (e.g. app.example.com) and Caddy gets and renews
+# an HTTPS certificate automatically. Also set APP_URL to the https:// address.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}

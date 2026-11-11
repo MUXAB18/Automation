@@ -112,7 +112,7 @@ describe("scopeArgs", () => {
 });
 
 function readModels() {
-  const dir = path.resolve(import.meta.dirname, "../prisma/schema");
+  const dir = path.resolve(import.meta.dirname, "../../../prisma/schema");
   return readdirSync(dir)
     .filter((f) => f.endsWith(".prisma"))
     .flatMap((f) => [

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: automation
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: automation
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U automation" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Throwaway database inside the CI service container. Never point CI at a real environment.
+      DATABASE_URL: postgresql://automation:ci-only-password@localhost:5432/automation
+      TEST_DATABASE_URL: postgresql://automation:ci-only-password@localhost:5432/automation_test
+      APP_URL: http://localhost:3100
+      BETTER_AUTH_SECRET: ci-only-secret-ci-only-secret-ci-only-secret
+      ENCRYPTION_KEY: Y2ktb25seS1rZXktY2ktb25seS1rZXktY2ktb25seS0=
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create test database
+        run: psql "postgresql://automation:ci-only-password@localhost:5432/automation" -c "CREATE DATABASE automation_test"
+      - run: npx prisma validate
+      - name: Apply migrations to the CI database
+        run: npm run db:deploy
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit and database integration tests
+        run: npm run test
+      - run: npm run build
+      - name: Smoke test the production build
+        run: |
+          npm run start -w @automation/web -- -p 3100 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3100/api/health && break; sleep 2; done
+          BASE_URL=http://localhost:3100 node scripts/smoke.mjs
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Dependency audit (production dependencies, high severity and above)
+        run: npm audit --omit=dev --audit-level=high
+
+  ml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r services/ml/requirements-dev.txt
+      - run: python -m pytest -q
+        working-directory: services/ml
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build web image
+        run: docker build -f docker/Dockerfile.web -t automation-web:ci .
+      - name: Build worker image
+        run: docker build -f docker/Dockerfile.app -t automation-app:ci .

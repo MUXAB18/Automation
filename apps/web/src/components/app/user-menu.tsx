@@ -44,15 +44,20 @@ export function UserMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="h-10 gap-2 rounded-full px-1.5 sm:pr-3"
+          className="h-12 gap-3 rounded-full px-1.5 hover:bg-transparent sm:pr-3"
           aria-label="Account menu"
         >
-          <Avatar className="size-8">
+          <Avatar className="size-11 ring-2 ring-card">
             <AvatarFallback className="bg-primary-soft text-xs font-semibold text-primary">
               {initials}
             </AvatarFallback>
           </Avatar>
-          <span className="hidden max-w-32 truncate text-sm font-medium sm:inline">{name}</span>
+          <span className="hidden text-left leading-tight sm:block">
+            <span className="block max-w-36 truncate text-sm font-semibold">{name}</span>
+            <span className="block max-w-36 truncate text-xs font-normal text-muted-foreground">
+              {roles}
+            </span>
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">

@@ -1,12 +1,60 @@
-# Local development services. Postgres runs on the host (or add it here if you prefer).
+# Development infrastructure only. Run the apps on your machine (npm run dev) against these containers.
+#
+#   npm run docker:dev        # PostgreSQL on 127.0.0.1:5433 and Redis on 127.0.0.1:6379
+#   npm run docker:dev:ml     # also the Python keyword service on 127.0.0.1:8001
+#
+# Point .env at it:
+#   DATABASE_URL=postgresql://automation:automation@localhost:5433/automation
+#   TEST_DATABASE_URL=postgresql://automation:automation@localhost:5433/automation_test
+#   REDIS_URL=redis://localhost:6379
+#
+# A Postgres installed on this machine (port 5432) keeps working: pick either in .env.
+
+name: automation-dev
+
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: automation
+      POSTGRES_PASSWORD: automation
+      POSTGRES_DB: automation
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-test-database.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automation -d automation"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ml:
+    profiles: ["ml"]
+    build:
+      context: ../services/ml
+    restart: unless-stopped
+    environment:
+      ML_SERVICE_TOKEN: dev-only-token-change-me-0123456789
+    ports:
+      - "127.0.0.1:8001:8001"
 
 volumes:
+  postgres-data:
   redis-data:

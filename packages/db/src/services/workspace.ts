@@ -192,27 +192,42 @@ export async function getPublishing(actor: Actor, f: Selection = {}) {
   const r = await resolve(actor, "content.view", { clientId: f.clientId });
   const db = forClients(r.clientIds);
   const clientIn = { clientId: { in: r.clientIds } };
-  const [jobs, posts, accounts] = await Promise.all([
+  const [jobs, posts, manual, accounts, attention] = await Promise.all([
     db.publishingJob.findMany({
       where: clientIn,
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take: 25,
       include: {
         client: { select: { name: true } },
-        contentItem: { select: { title: true, channel: true } },
+        contentItem: { select: { id: true, title: true, channel: true } },
+        integrationAccount: { select: { displayName: true } },
       },
     }),
     db.publishedPost.findMany({
       where: clientIn,
       orderBy: { publishedAt: "desc" },
       take: 10,
-      include: { client: { select: { name: true } }, contentItem: { select: { title: true } } },
+      include: {
+        client: { select: { name: true } },
+        contentItem: { select: { id: true, title: true } },
+      },
+    }),
+    db.manualPublication.findMany({
+      where: clientIn,
+      orderBy: { publishedAt: "desc" },
+      take: 10,
+      include: {
+        client: { select: { name: true } },
+        contentItem: { select: { id: true, title: true } },
+        markedBy: { select: { name: true } },
+      },
     }),
     db.integrationAccount.count({
       where: { ...clientIn, integration: { category: "social" }, status: "active" },
     }),
+    db.publishingJob.count({ where: { ...clientIn, status: { in: ["failed", "needs_review"] } } }),
   ]);
-  return { jobs, posts, connectedAccounts: accounts };
+  return { jobs, posts, manual, connectedAccounts: accounts, needsAttention: attention };
 }
 
 // ---- Analytics --------------------------------------------------------------------------------------
@@ -295,33 +310,6 @@ export async function listAutomationRules(
   return paged(rows, total, page);
 }
 
-// ---- Integrations --------------------------------------------------------------------------------------------------
-
-export async function getIntegrations(actor: Actor, f: Selection = {}) {
-  const r = await resolve(actor, "integration.manage", { clientId: f.clientId });
-  const db = forClients(r.clientIds);
-  const [catalogue, accounts] = await Promise.all([
-    getUnscopedPrisma().integration.findMany({
-      where: { isEnabled: true },
-      orderBy: [{ category: "asc" }, { name: "asc" }],
-    }),
-    db.integrationAccount.findMany({
-      where: { clientId: { in: r.clientIds } },
-      orderBy: { createdAt: "desc" },
-      // Never select credentials: the page only needs status.
-      select: {
-        id: true,
-        status: true,
-        displayName: true,
-        lastSyncedAt: true,
-        integrationId: true,
-        client: { select: { name: true } },
-      },
-    }),
-  ]);
-  return { catalogue, accounts };
-}
-
 // ---- Notifications -----------------------------------------------------------------------------------------------------
 
 /** The actor's own notifications. Client-linked ones only while they can still reach that client. */
@@ -367,7 +355,7 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
     resolve(actor, "task.view", selection),
     resolve(actor, "content.view", selection),
     resolve(actor, "seo.view", sel),
-    resolve(actor, "integration.manage", sel),
+    resolve(actor, "integration.view", sel),
     resolve(actor, "client.view", sel),
   ]);
   const sections: OverviewSections = {
@@ -414,6 +402,8 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
     sampleTasks,
     sampleContent,
     reviewQueue,
+    statusGroups,
+    weeklyTasks,
   ] = await Promise.all([
     vdb.client.groupBy({ by: ["status"], _count: { _all: true } }),
     tdb.task.count({ where: open }),
@@ -472,7 +462,24 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
           },
         })
       : Promise.resolve(0),
+    tdb.task.groupBy({ by: ["status"], where: taskBase, _count: { _all: true } }),
+    tdb.task.findMany({
+      where: { ...taskBase, dueAt: { gte: weekStart(now, -4), lt: weekStart(now, 8) } },
+      select: { dueAt: true, status: true },
+    }),
   ]);
+
+  // Tasks due per week (4 weeks back, 8 ahead): finished vs still open. Weeks start on Monday (UTC).
+  const weekly = Array.from({ length: 12 }, (_, i) => {
+    const start = weekStart(now, i - 4);
+    const end = weekStart(now, i - 3);
+    const inWeek = weeklyTasks.filter((t) => t.dueAt && t.dueAt >= start && t.dueAt < end);
+    return {
+      weekStart: start.toISOString().slice(0, 10),
+      done: inWeek.filter((t) => t.status === "completed").length,
+      open: inWeek.filter((t) => t.status !== "completed" && t.status !== "cancelled").length,
+    };
+  });
 
   const count = (status: string) => clientGroups.find((g) => g.status === status)?._count._all ?? 0;
   return {
@@ -495,5 +502,16 @@ export async function getOverview(actor: Actor, selection: Selection = {}) {
     integrations: { needAttention: attentionAccounts, failedSyncs },
     activity,
     sample: { tasks: sampleTasks, content: sampleContent },
+    charts: {
+      taskStatus: statusGroups.map((g) => ({ status: g.status as string, count: g._count._all })),
+      weekly,
+    },
   };
+}
+
+/** Start (Monday 00:00 UTC) of the week containing `date`, shifted by `offsetWeeks`. */
+function weekStart(date: Date, offsetWeeks: number): Date {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) + offsetWeeks * 7);
+  return d;
 }

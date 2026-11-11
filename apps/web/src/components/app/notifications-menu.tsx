@@ -38,7 +38,7 @@ export function NotificationsMenu({
         <Button
           variant="ghost"
           size="icon"
-          className="relative"
+          className="relative size-11 rounded-full border border-border/60 bg-card shadow-card hover:bg-card"
           aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
         >
           <Bell className="size-5" aria-hidden />

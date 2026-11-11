@@ -1,3 +1,4 @@
+import { logger } from "@automation/config";
 import { getUnscopedPrisma } from "./unsafe";
 import type { Prisma } from "./generated/client";
 
@@ -72,7 +73,7 @@ export async function recordSecurityEvent(event: SecurityEvent): Promise<void> {
       },
     });
   } catch (error) {
-    console.error("audit: could not record security event", event.action, error);
+    logger.error("audit: could not record security event", { action: event.action, error });
   }
 }
 

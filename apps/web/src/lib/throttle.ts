@@ -61,3 +61,34 @@ export function recordAttempt(
     ipAddress: ip,
   });
 }
+
+/**
+ * Per-user quota for expensive or abusable endpoints (PDF rendering, OAuth starts). Counts earlier
+ * events for the user in the window, then records this one. Returns false when the quota is used up.
+ * Not atomic: concurrent requests can overshoot by a few, which is fine for abuse protection.
+ */
+export async function consumeUserQuota(
+  action: string,
+  userId: string,
+  limit: number,
+  windowMs = WINDOW_MS,
+): Promise<boolean> {
+  const used = await countSecurityEvents({
+    action,
+    entityId: userId,
+    since: new Date(Date.now() - windowMs),
+  });
+  if (used >= limit) return false;
+  await recordSecurityEvent({
+    action,
+    actorUserId: userId,
+    entityType: "quota",
+    entityId: userId,
+  });
+  return true;
+}
+
+export const QUOTAS = {
+  reportPdf: { action: "quota.report_pdf", limit: 20, windowMs: 10 * 60 * 1000 },
+  oauthStart: { action: "quota.oauth_start", limit: 20, windowMs: 10 * 60 * 1000 },
+} as const;

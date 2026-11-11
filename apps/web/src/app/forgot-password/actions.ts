@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { z } from "zod";
+import { logger } from "@automation/config";
 import { auth } from "@/lib/auth";
 import { getRequestIp } from "@/lib/request-info";
 import { RESET_REQUEST, isThrottled, recordAttempt } from "@/lib/throttle";
@@ -30,10 +31,7 @@ export async function requestPasswordResetAction(
         headers: await headers(),
       });
     } catch (error) {
-      console.error(
-        "password reset request failed",
-        error instanceof Error ? error.message : error,
-      );
+      logger.error("password reset request failed", { error });
     }
   }
   return { sent: true };

@@ -1,7 +1,7 @@
 # Database design (Phase 2)
 
-PostgreSQL schema managed with Prisma (multi-file schema in `packages/db/prisma/schema/`, one file per domain).
-66 models. Migrations: `packages/db/prisma/migrations/`. This document is the reference for the
+PostgreSQL schema managed with Prisma (multi-file schema in `prisma/schema/`, one file per domain).
+66 models. Migrations: `prisma/migrations/`. This document is the reference for the
 relationships, the integrity rules the database enforces on its own, deletion behaviour and the data lifecycle.
 
 Contents: [Tenancy model](#tenancy-model) · [Design decisions](#design-decisions) · [Diagrams](#diagrams) ·
@@ -960,7 +960,16 @@ Never updated, always inserted: `keyword_rank_snapshots`, `backlink_snapshots`, 
   `TENANT_MODELS` (`src/scope.ts`; a test fails if you forget), add cross-client tests, and use composite FKs for every reference to another client-owned table.
 * Commands: `npm run db:migrate` (dev, creates a migration), `npm run db:deploy` (apply), `npm run db:seed` (idempotent; permissions, default roles, provider and
   metric catalogues, the default agency, SARJ Worldwide and, outside production, sample SEO/task/content rows).
-  Checks: `npx -w @automation/db prisma validate`, and `prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code` to detect drift.
+  Checks: `npm run db:validate`, and `prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code` to detect drift.
 * Upgrading an existing Phase 1 database is data-preserving: the migration creates a "Default Agency", moves existing clients, websites, job runs and
   audit rows under it, converts memberships to `client_memberships` with matching roles, and refuses to run if the legacy `integration_connections` table has rows.
   Run `npm run db:seed` afterwards to attach role permissions.
+
+## Provider integration additions (Phases 7–9)
+
+All tenant-scoped (`agency_id` + `client_id`, composite foreign keys, registered in `TENANT_MODELS`). Details: [integrations-framework.md](integrations-framework.md), [integrations-gohighlevel.md](integrations-gohighlevel.md), [integrations-seranking.md](integrations-seranking.md).
+
+* `sync_runs.summary` (JSONB): source (`live`/`mock`), unsupported features, per-resource counts. A partial unique index allows one queued/running run per integration account. `sync_errors` keep only short safe text.
+* GoHighLevel: `crm_contacts`, `crm_pipelines`, `crm_opportunities`, `crm_conversations` (metadata only), `crm_automations` (campaign/workflow), `provider_social_accounts`, `provider_social_posts`, `provider_social_stats` (append-only). Unique on `(integration_account_id, external_id)`.
+* Publishing: `publishing_jobs.target_account_ids`, `request_sent_at`, status `needs_review` (outcome unknown; never retried automatically). `publishing_jobs_sent_chk` stops a job that sent a request from returning to `queued`.
+* SE Ranking: `provider_seo_projects` (discovered provider project, linked by a person to one `seo_projects` row and one search engine). Provider identity (`external_source`, `external_id`) on `keywords`, `site_audits`, `competitors`; `external_source` on `seo_issues`; `keywords.search_volume`; `competitors.provider_data`. Enum values `se_ranking` on `RankSource` and `BacklinkSource`.

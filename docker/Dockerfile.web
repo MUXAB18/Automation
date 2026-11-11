@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.7
+# Web app (Next.js standalone). Build context: the repository root.
+#   docker build -f docker/Dockerfile.web -t automation-web .
+
+ARG NODE_VERSION=22
+
+FROM node:${NODE_VERSION}-slim AS base
+WORKDIR /app
+# OpenSSL is needed by the Prisma query engine / pg TLS; slim images do not ship it.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+FROM base AS deps
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/worker/package.json apps/worker/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/db/package.json packages/db/package.json
+COPY packages/integrations/package.json packages/integrations/package.json
+COPY packages/reports/package.json packages/reports/package.json
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+# postinstall (packages/db) runs `prisma generate`
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+FROM deps AS build
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1 NEXT_STANDALONE=1
+# No secrets are needed to build: everything is read at runtime.
+RUN npm run build -w @automation/web
+
+FROM base AS runner
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 UPLOAD_DIR=/data/uploads
+RUN groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app --home-dir /app app \
+  && mkdir -p /data/uploads && chown -R app:app /data
+COPY --from=build --chown=app:app /app/apps/web/.next/standalone ./
+COPY --from=build --chown=app:app /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=app:app /app/apps/web/public ./apps/web/public
+USER app
+EXPOSE 3000
+VOLUME ["/data"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "apps/web/server.js"]

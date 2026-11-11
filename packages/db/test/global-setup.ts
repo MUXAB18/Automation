@@ -8,7 +8,8 @@ export default function setup() {
     throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL: tests wipe their database");
   }
   execSync("npx prisma migrate deploy", {
-    cwd: import.meta.dirname + "/..",
+    // Migrations live in the repo-root prisma/ folder.
+    cwd: import.meta.dirname + "/../../..",
     env: { ...process.env, DATABASE_URL: url },
     stdio: "pipe",
   });

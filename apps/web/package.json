@@ -13,6 +13,8 @@
   "dependencies": {
     "@automation/config": "*",
     "@automation/db": "*",
+    "@automation/integrations": "*",
+    "@automation/reports": "*",
     "@radix-ui/react-slot": "^1.5.0",
     "better-auth": "^1.7.14",
     "class-variance-authority": "^0.7.1",
@@ -23,6 +25,7 @@
     "radix-ui": "^1.8.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "recharts": "^3.10.1",
     "server-only": "^0.0.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",

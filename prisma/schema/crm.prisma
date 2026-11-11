@@ -1,0 +1,218 @@
+// ---- Provider data synchronised from CRM / social providers (GoHighLevel first) ---------------
+// Every row belongs to ONE integration account. (integration_account_id, external_id) is unique, so
+// syncing the same provider record twice updates it and never duplicates it. Composite foreign keys
+// keep rows inside their own client and agency.
+//
+// Privacy: only the fields the platform uses are stored. Message bodies are never stored, only
+// conversation metadata.
+
+enum CrmAutomationKind {
+  campaign
+  workflow
+}
+
+model CrmContact {
+  id                   String    @id @default(uuid())
+  agencyId             String    @map("agency_id")
+  clientId             String    @map("client_id")
+  integrationAccountId String    @map("integration_account_id")
+  externalId           String    @map("external_id")
+  name                 String?
+  firstName            String?   @map("first_name")
+  lastName             String?   @map("last_name")
+  email                String?
+  phone                String?
+  source               String?
+  tags                 String[]
+  externalCreatedAt    DateTime? @map("external_created_at") @db.Timestamptz(3)
+  externalUpdatedAt    DateTime? @map("external_updated_at") @db.Timestamptz(3)
+  syncedAt             DateTime  @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([id, clientId])
+  @@index([clientId, email])
+  @@map("crm_contacts")
+}
+
+model CrmPipeline {
+  id                   String   @id @default(uuid())
+  agencyId             String   @map("agency_id")
+  clientId             String   @map("client_id")
+  integrationAccountId String   @map("integration_account_id")
+  externalId           String   @map("external_id")
+  name                 String
+  // [{ "id": "...", "name": "...", "position": 0 }]
+  stages               Json     @default("[]") @db.JsonB
+  syncedAt             DateTime @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([id, clientId])
+  @@map("crm_pipelines")
+}
+
+model CrmOpportunity {
+  id                   String    @id @default(uuid())
+  agencyId             String    @map("agency_id")
+  clientId             String    @map("client_id")
+  integrationAccountId String    @map("integration_account_id")
+  externalId           String    @map("external_id")
+  name                 String?
+  status               String?
+  monetaryValue        Decimal?  @map("monetary_value") @db.Decimal(14, 2)
+  pipelineExternalId   String?   @map("pipeline_external_id")
+  stageExternalId      String?   @map("stage_external_id")
+  contactExternalId    String?   @map("contact_external_id")
+  assignedToExternalId String?   @map("assigned_to_external_id")
+  externalCreatedAt    DateTime? @map("external_created_at") @db.Timestamptz(3)
+  externalUpdatedAt    DateTime? @map("external_updated_at") @db.Timestamptz(3)
+  syncedAt             DateTime  @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([id, clientId])
+  @@index([clientId, status])
+  @@map("crm_opportunities")
+}
+
+model CrmConversation {
+  id                   String    @id @default(uuid())
+  agencyId             String    @map("agency_id")
+  clientId             String    @map("client_id")
+  integrationAccountId String    @map("integration_account_id")
+  externalId           String    @map("external_id")
+  contactExternalId    String?   @map("contact_external_id")
+  type                 String?
+  lastMessageType      String?   @map("last_message_type")
+  lastMessageAt        DateTime? @map("last_message_at") @db.Timestamptz(3)
+  unreadCount          Int       @default(0) @map("unread_count")
+  syncedAt             DateTime  @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([id, clientId])
+  @@map("crm_conversations")
+}
+
+// Campaigns and workflows: names and status only. The API does not expose their performance.
+model CrmAutomation {
+  id                   String            @id @default(uuid())
+  agencyId             String            @map("agency_id")
+  clientId             String            @map("client_id")
+  integrationAccountId String            @map("integration_account_id")
+  kind                 CrmAutomationKind
+  externalId           String            @map("external_id")
+  name                 String?
+  status               String?
+  version              Int?
+  externalCreatedAt    DateTime?         @map("external_created_at") @db.Timestamptz(3)
+  externalUpdatedAt    DateTime?         @map("external_updated_at") @db.Timestamptz(3)
+  syncedAt             DateTime          @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, kind, externalId])
+  @@unique([id, clientId])
+  @@map("crm_automations")
+}
+
+// A social profile connected inside the provider (a Facebook page, a LinkedIn page, ...).
+// These are the destinations a publishing job can target.
+model ProviderSocialAccount {
+  id                   String   @id @default(uuid())
+  agencyId             String   @map("agency_id")
+  clientId             String   @map("client_id")
+  integrationAccountId String   @map("integration_account_id")
+  externalId           String   @map("external_id")
+  profileExternalId    String?  @map("profile_external_id")
+  platform             String?
+  name                 String?
+  type                 String?
+  isExpired            Boolean  @default(false) @map("is_expired")
+  syncedAt             DateTime @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([id, clientId])
+  @@map("provider_social_accounts")
+}
+
+// Posts as the provider's planner reports them (whoever created them).
+model ProviderSocialPost {
+  id                   String    @id @default(uuid())
+  agencyId             String    @map("agency_id")
+  clientId             String    @map("client_id")
+  integrationAccountId String    @map("integration_account_id")
+  externalId           String    @map("external_id")
+  platform             String?
+  summary              String?
+  status               String?
+  type                 String?
+  accountExternalIds   String[]  @map("account_external_ids")
+  platformPostId       String?   @map("platform_post_id")
+  scheduledFor         DateTime? @map("scheduled_for") @db.Timestamptz(3)
+  publishedAt          DateTime? @map("published_at") @db.Timestamptz(3)
+  providerError        String?   @map("provider_error")
+  externalCreatedAt    DateTime? @map("external_created_at") @db.Timestamptz(3)
+  externalUpdatedAt    DateTime? @map("external_updated_at") @db.Timestamptz(3)
+  syncedAt             DateTime  @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([integrationAccountId, externalId])
+  @@unique([id, clientId])
+  @@index([clientId, publishedAt(sort: Desc)])
+  @@map("provider_social_posts")
+}
+
+// Append-only account-level social performance readings (the provider reports the last 7 days).
+model ProviderSocialStat {
+  id                   String   @id @default(uuid())
+  agencyId             String   @map("agency_id")
+  clientId             String   @map("client_id")
+  integrationAccountId String   @map("integration_account_id")
+  syncRunId            String?  @map("sync_run_id")
+  windowDays           Int      @default(7) @map("window_days")
+  posts                Int      @default(0)
+  likes                Int      @default(0)
+  comments             Int      @default(0)
+  followers            Int      @default(0)
+  impressions          BigInt   @default(0)
+  capturedAt           DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  client             Client             @relation(fields: [clientId, agencyId], references: [id, agencyId], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId, clientId], references: [id, clientId], onDelete: Cascade)
+  syncRun            SyncRun?           @relation(fields: [syncRunId, clientId], references: [id, clientId], onDelete: Restrict)
+
+  @@unique([syncRunId])
+  @@unique([id, clientId])
+  @@index([integrationAccountId, capturedAt(sort: Desc)])
+  @@map("provider_social_stats")
+}

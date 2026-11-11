@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { getClient, getProjectDetail } from "@automation/db";
+import { getClient, getProjectDetail, getSeoProjectHeader } from "@automation/db";
 import type { SessionActor } from "./session";
 
 /**
@@ -18,3 +18,9 @@ export const loadClient = (actor: SessionActor, id: string) =>
   client(actor.userId, actor.isAdmin, id);
 export const loadProject = (actor: SessionActor, id: string) =>
   project(actor.userId, actor.isAdmin, id);
+
+const seoHeader = cache((userId: string, isAdmin: boolean, id: string) =>
+  getSeoProjectHeader({ userId, isAdmin }, id),
+);
+export const loadSeoHeader = (actor: SessionActor, id: string) =>
+  seoHeader(actor.userId, actor.isAdmin, id);

@@ -287,7 +287,13 @@ describe("history is kept", () => {
     });
     const run = () =>
       prisma().syncRun.create({
-        data: { ...t.tenantA, integrationAccountId: account.id, analyticsSourceId: source.id },
+        // Finished runs: the database allows only one queued/running run per account.
+        data: {
+          ...t.tenantA,
+          integrationAccountId: account.id,
+          analyticsSourceId: source.id,
+          status: "succeeded",
+        },
       });
     return { ...t, source, metric, run };
   }
